@@ -10,7 +10,7 @@ readme = "README.md"
 authors = [
     {name = "tboy1337", email = "tboy1337@example.com"}
 ]
-license = {file = "LICENSE.txt"}
+license = {file = "LICENSE.md"}
 keywords = ["sms", "messaging", "twilio", "textbelt", "gui", "cli", "api"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
