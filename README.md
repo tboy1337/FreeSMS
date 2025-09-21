@@ -2,7 +2,7 @@
 
 <div align="center">
   <img src="src/gui/assets/sms_icon.png" alt="FreeSMS Logo" width="200"/>
-  <p>A cross-platform Python application with Tkinter GUI that allows sending free SMS messages to mobile phones worldwide.</p>
+  <p>A cross-platform Python application with PySide GUI that allows sending free SMS messages to mobile phones worldwide.</p>
   
   ![Python](https://img.shields.io/badge/python-3.6+-blue.svg)
   ![License](https://img.shields.io/badge/license-MIT-green.svg)
@@ -18,7 +18,7 @@
 - 📝 **Message Templates**: Save and reuse common message formats
 - 📊 **Message History**: Track all sent messages with delivery status
 - 🔐 **Secure Storage**: Encrypted storage of API keys and credentials
-- 🖥️ **Modern UI**: Clean, intuitive Tkinter interface with customizable themes
+- 🖥️ **Modern UI**: Clean, intuitive PySide interface with customizable themes
 - 🔔 **Notifications**: Desktop alerts for message delivery status
 - 💻 **CLI Support**: Powerful command-line interface for scripting and automation
 - 🔌 **System Tray Integration**: Run in the background with quick access
@@ -29,7 +29,6 @@
 ### Prerequisites
 
 - Python 3.6 or higher
-- Tkinter (usually included with Python)
 - Git (for cloning the repository)
 
 ### Installation
@@ -153,7 +152,6 @@ optional arguments:
 ## 📋 System Requirements
 
 - **Python**: 3.6 or higher
-- **Tkinter**: Usually included with Python installation
 - **Disk Space**: ~50MB for installation and databases
 - **Memory**: 100MB+ recommended
 
@@ -244,7 +242,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 - [Twilio](https://www.twilio.com/) - SMS API provider
 - [TextBelt](https://textbelt.com/) - SMS API provider
-- [Tkinter](https://docs.python.org/3/library/tkinter.html) - GUI toolkit
 - All open-source packages listed in requirements.txt
 
 ## 📄 License
