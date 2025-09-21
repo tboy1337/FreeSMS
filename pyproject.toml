@@ -1,0 +1,126 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "freesms"
+version = "1.0.0"
+description = "A comprehensive SMS management application with GUI, CLI, and API interfaces"
+readme = "README.md"
+authors = [
+    {name = "tboy1337", email = "tboy1337@example.com"}
+]
+license = {file = "LICENSE.txt"}
+keywords = ["sms", "messaging", "twilio", "textbelt", "gui", "cli", "api"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: End Users/Desktop",
+    "License :: Other/Proprietary License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Telephony",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: MacOS X",
+    "Environment :: X11 Applications :: Qt",
+    "Natural Language :: English",
+]
+requires-python = ">=3.13"
+dependencies = [
+    "pyside6",
+    "twilio",
+    "requests",
+    "psycopg2-binary",
+    "sqlalchemy",
+    "click",
+    "croniter",
+    "python-dateutil",
+    "pydantic",
+    "cryptography",
+    "keyring",
+    "plyer",
+    "schedule",
+    "apscheduler",
+]
+
+[project.optional-dependencies]
+dev = [
+    # Core Testing
+    "pytest",
+    "pytest-asyncio",
+    "pytest-timeout",
+    "pytest-xdist",
+    "pytest-mock",
+    "pytest-cov",
+    # Linting and Code Quality
+    "pylint",
+    "mypy",
+    # Code Formatting
+    "black",
+    "isort",
+    # Type Checking
+    "types-requests",
+    "types-python-dateutil",
+]
+
+[project.urls]
+Homepage = "https://github.com/tboy1337/FreeSMS"
+Documentation = "https://github.com/tboy1337/FreeSMS/docs"
+Repository = "https://github.com/tboy1337/FreeSMS.git"
+"Bug Tracker" = "https://github.com/tboy1337/FreeSMS/issues"
+
+[project.scripts]
+freesms = "src.main:main"
+freesms-cli = "src.cli.cli:main"
+
+[project.gui-scripts]
+freesms-gui = "src.gui.app:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["*"]
+exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+"gui.assets" = ["*.ico", "*.png"]
+
+# Black configuration
+[tool.black]
+line-length = 88
+target-version = ['py313']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  | htmlcov
+)/
+'''
+
+# isort configuration
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["src"]
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+skip_glob = ["*/migrations/*", "*/__pycache__/*"]
+

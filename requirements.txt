@@ -1,0 +1,14 @@
+PySide6
+twilio
+requests
+psycopg2-binary
+sqlalchemy
+click
+croniter
+python-dateutil
+pydantic
+cryptography
+keyring
+plyer
+schedule
+apscheduler

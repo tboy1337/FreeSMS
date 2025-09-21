@@ -1,0 +1,47 @@
+[run]
+source = src
+branch = True
+parallel = True
+concurrency = thread,multiprocessing
+omit = 
+    */tests/*
+    */test_*
+    */__pycache__/*
+    */venv/*
+    */virtualenv/*
+    */site-packages/*
+    */.*
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if self.debug:
+    if settings.DEBUG
+    raise AssertionError
+    raise NotImplementedError
+    if 0:
+    if __name__ == .__main__.:
+    class .*\bProtocol\):
+    @(abc\.)?abstractmethod
+    @overload
+    # TYPE_CHECKING
+    if TYPE_CHECKING:
+
+show_missing = True
+skip_covered = False
+precision = 2
+fail_under = 100.0
+
+[html]
+directory = htmlcov
+show_contexts = True
+skip_covered = False
+skip_empty = False
+
+[xml]
+output = coverage.xml
+
+[json]
+output = coverage.json
+show_contexts = True
