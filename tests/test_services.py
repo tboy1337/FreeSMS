@@ -125,6 +125,16 @@ class TestConfigService(unittest.TestCase):
         """Resetting an unknown section returns False."""
         self.assertFalse(self.config.reset("nonexistent_section"))
 
+    def test_reset_single_section(self):
+        """Resetting a single section restores only that section."""
+        self.config.set("ui.window_width", 1200)
+        self.config.set("general.start_minimized", True)
+
+        self.assertTrue(self.config.reset("ui"))
+
+        self.assertEqual(self.config.get("ui.window_width"), 900)
+        self.assertTrue(self.config.get("general.start_minimized"))
+
     def test_get_all(self):
         """get_all returns a copy of settings."""
         self.config.set("test.key", "value")

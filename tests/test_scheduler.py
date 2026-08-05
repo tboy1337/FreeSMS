@@ -352,7 +352,7 @@ class TestMessageScheduler(unittest.TestCase):
         # Verify next schedule time is one day later
         expected_time = datetime(2023, 7, 2, 12, 0, 0)
         self.mock_db.update_scheduled_message.assert_called_once_with(
-            message_id=1, schedule_time=expected_time, status="pending"
+            message_id=1, scheduled_time=expected_time, status="pending"
         )
         mock_callback.assert_called_once()
 
@@ -369,7 +369,7 @@ class TestMessageScheduler(unittest.TestCase):
         # Verify next schedule time is one week later
         expected_time = datetime(2023, 7, 8, 12, 0, 0)
         self.mock_db.update_scheduled_message.assert_called_once_with(
-            message_id=1, schedule_time=expected_time, status="pending"
+            message_id=1, scheduled_time=expected_time, status="pending"
         )
 
     def test_update_recurring_message_monthly(self):
@@ -385,7 +385,7 @@ class TestMessageScheduler(unittest.TestCase):
         # Verify next schedule time is one month later
         expected_time = datetime(2023, 8, 15, 12, 0, 0)
         self.mock_db.update_scheduled_message.assert_called_once_with(
-            message_id=1, schedule_time=expected_time, status="pending"
+            message_id=1, scheduled_time=expected_time, status="pending"
         )
 
     def test_update_recurring_message_monthly_end_of_month(self):
@@ -401,7 +401,7 @@ class TestMessageScheduler(unittest.TestCase):
         # February doesn't have 31 days, should use 28
         expected_time = datetime(2023, 2, 28, 12, 0, 0)
         self.mock_db.update_scheduled_message.assert_called_once_with(
-            message_id=1, schedule_time=expected_time, status="pending"
+            message_id=1, scheduled_time=expected_time, status="pending"
         )
 
     def test_update_recurring_message_monthly_leap_year(self):
@@ -417,7 +417,7 @@ class TestMessageScheduler(unittest.TestCase):
         # February 2024 has 29 days in leap year
         expected_time = datetime(2024, 2, 29, 12, 0, 0)
         self.mock_db.update_scheduled_message.assert_called_once_with(
-            message_id=1, schedule_time=expected_time, status="pending"
+            message_id=1, scheduled_time=expected_time, status="pending"
         )
 
     def test_update_recurring_message_monthly_thirty_day_month(self):
@@ -433,7 +433,7 @@ class TestMessageScheduler(unittest.TestCase):
         # April has only 30 days
         expected_time = datetime(2023, 4, 30, 12, 0, 0)
         self.mock_db.update_scheduled_message.assert_called_once_with(
-            message_id=1, schedule_time=expected_time, status="pending"
+            message_id=1, scheduled_time=expected_time, status="pending"
         )
 
     def test_update_recurring_message_custom_with_json(self):
@@ -450,7 +450,7 @@ class TestMessageScheduler(unittest.TestCase):
         # Verify next schedule time is 5 days later
         expected_time = datetime(2023, 7, 6, 12, 0, 0)
         self.mock_db.update_scheduled_message.assert_called_once_with(
-            message_id=1, schedule_time=expected_time, status="pending"
+            message_id=1, scheduled_time=expected_time, status="pending"
         )
 
     def test_update_recurring_message_custom_with_dict(self):
@@ -468,7 +468,7 @@ class TestMessageScheduler(unittest.TestCase):
         # This appears to be a bug - when recurring_interval is already a dict, it should be preserved
         expected_time = datetime(2023, 7, 2, 12, 0, 0)  # Uses default 1 day
         self.mock_db.update_scheduled_message.assert_called_once_with(
-            message_id=1, schedule_time=expected_time, status="pending"
+            message_id=1, scheduled_time=expected_time, status="pending"
         )
 
     def test_update_recurring_message_custom_invalid_json(self):
@@ -485,7 +485,7 @@ class TestMessageScheduler(unittest.TestCase):
         # Should use default days_interval of 1
         expected_time = datetime(2023, 7, 2, 12, 0, 0)
         self.mock_db.update_scheduled_message.assert_called_once_with(
-            message_id=1, schedule_time=expected_time, status="pending"
+            message_id=1, scheduled_time=expected_time, status="pending"
         )
 
     def test_update_recurring_message_year_rollover(self):
@@ -501,7 +501,7 @@ class TestMessageScheduler(unittest.TestCase):
         # Should roll over to January 2024
         expected_time = datetime(2024, 1, 15, 12, 0, 0)
         self.mock_db.update_scheduled_message.assert_called_once_with(
-            message_id=1, schedule_time=expected_time, status="pending"
+            message_id=1, scheduled_time=expected_time, status="pending"
         )
 
     def test_schedule_message(self):
@@ -748,6 +748,74 @@ class TestMessageScheduler(unittest.TestCase):
         callback1.assert_called_once()
         callback2.assert_called_once()
         mock_logger.error.assert_called()
+
+    def test_set_check_interval(self):
+        """Test updating the scheduler check interval."""
+        with (
+            patch("schedule.clear") as mock_clear,
+            patch("schedule.every") as mock_every,
+        ):
+            self.scheduler.set_check_interval(120)
+
+        mock_clear.assert_called_once()
+        mock_every.assert_called_once_with(2)
+        mock_every.return_value.minutes.do.assert_called_once_with(
+            self.scheduler.check_due_messages
+        )
+
+
+class TestMessageSchedulerIntegration(unittest.TestCase):
+    """Integration tests using a real database instance."""
+
+    def setUp(self):
+        """Set up scheduler with a temporary database."""
+        import tempfile
+
+        from src.models.database import Database
+
+        self.db_fd, self.db_path = tempfile.mkstemp()
+        os.close(self.db_fd)
+        self.db = Database(self.db_path)
+        self.mock_service_manager = MagicMock()
+        self.mock_service_manager.send_sms.return_value = SMSResponse(
+            success=True, message_id="msg123"
+        )
+
+        with patch("schedule.every"):
+            self.scheduler = MessageScheduler(self.db, self.mock_service_manager)
+
+    def tearDown(self):
+        """Clean up scheduler and database."""
+        if self.scheduler.running:
+            self.scheduler.stop()
+        self.db.close()
+        os.unlink(self.db_path)
+
+    def test_recurring_daily_advances_scheduled_time(self):
+        """Recurring messages should advance scheduled_time after successful send."""
+        past_time = (datetime.now() - timedelta(minutes=5)).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        message_id = self.db.save_scheduled_message(
+            recipient="+1234567890",
+            message="Recurring test",
+            scheduled_time=past_time,
+            recurring="daily",
+            recurring_interval=0,
+            service="twilio",
+        )
+        assert message_id is not None
+
+        self.scheduler.check_due_messages()
+
+        messages = self.db.get_scheduled_messages()
+        updated = next(message for message in messages if message["id"] == message_id)
+        assert updated["status"] == "pending"
+        expected_time = (
+            datetime.strptime(past_time, "%Y-%m-%d %H:%M:%S") + timedelta(days=1)
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        assert updated["scheduled_time"] == expected_time
+        self.mock_service_manager.send_sms.assert_called_once()
 
 
 if __name__ == "__main__":

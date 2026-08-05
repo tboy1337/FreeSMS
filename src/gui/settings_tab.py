@@ -203,6 +203,24 @@ class SettingsTab(QWidget):
             self.active_service_label.setText("None")
             self.quota_label.setText("N/A")
 
+        if hasattr(self.app, "config"):
+            config = self.app.config
+            self.start_minimized_check.setChecked(
+                bool(config.get("general.start_minimized", False))
+            )
+            self.check_updates_check.setChecked(
+                bool(config.get("general.check_updates", True))
+            )
+            self.show_notifications_check.setChecked(
+                bool(config.get("notification.show_notifications", True))
+            )
+            self.play_sound_check.setChecked(
+                bool(config.get("notification.play_sound", True))
+            )
+            self.check_interval_spin.setValue(
+                int(config.get("scheduler.check_interval", 1))
+            )
+
     def _on_service_selected(self, service_name):
         """Handle service selection"""
         # Clear service details frame
@@ -247,7 +265,9 @@ class SettingsTab(QWidget):
 
         # Phone Number
         self.twilio_phone_entry = QLineEdit()
-        self.twilio_phone_entry.setText(credentials.get("phone_number", ""))
+        self.twilio_phone_entry.setText(
+            credentials.get("from_number") or credentials.get("phone_number", "")
+        )
         form_layout.addRow("Twilio Phone Number:", self.twilio_phone_entry)
 
         # Help text
@@ -370,10 +390,15 @@ class SettingsTab(QWidget):
             QMessageBox.critical(self, "Error", "Phone Number is required")
             return
 
+        valid_phone, phone_error = InputValidator.validate_phone_input(phone_number)
+        if not valid_phone:
+            QMessageBox.critical(self, "Invalid Phone Number", phone_error)
+            return
+
         credentials = {
             "account_sid": account_sid,
             "auth_token": auth_token,
-            "phone_number": phone_number,
+            "from_number": phone_number,
         }
 
         self.app.set_status("Testing Twilio connection...")
@@ -388,7 +413,7 @@ class SettingsTab(QWidget):
                 self.status_message.emit("Ready")
                 return
 
-            success = service.configure(credentials)
+            success = service.configure(credentials, validate=True)
 
             if success:
                 self.dialog_info.emit("Success", "Twilio connection successful")
@@ -418,14 +443,21 @@ class SettingsTab(QWidget):
             QMessageBox.critical(self, "Error", "Phone Number is required")
             return
 
+        valid_phone, phone_error = InputValidator.validate_phone_input(phone_number)
+        if not valid_phone:
+            QMessageBox.critical(self, "Invalid Phone Number", phone_error)
+            return
+
         credentials = {
             "account_sid": account_sid,
             "auth_token": auth_token,
-            "phone_number": phone_number,
+            "from_number": phone_number,
         }
 
         try:
-            success = self.app.service_manager.configure_service("twilio", credentials)
+            success = self.app.service_manager.configure_service(
+                "twilio", credentials, validate=True
+            )
 
             if success:
                 QMessageBox.information(
@@ -447,6 +479,11 @@ class SettingsTab(QWidget):
             QMessageBox.critical(self, "Error", "API Key is required")
             return
 
+        valid_key, key_error = InputValidator.validate_api_key(api_key)
+        if not valid_key:
+            QMessageBox.critical(self, "Invalid API Key", key_error)
+            return
+
         credentials = {"api_key": api_key}
 
         self.app.set_status("Testing TextBelt connection...")
@@ -461,7 +498,7 @@ class SettingsTab(QWidget):
                 self.status_message.emit("Ready")
                 return
 
-            success = service.configure(credentials)
+            success = service.configure(credentials, validate=True)
 
             if success:
                 quota = service.get_remaining_quota()
@@ -485,11 +522,16 @@ class SettingsTab(QWidget):
             QMessageBox.critical(self, "Error", "API Key is required")
             return
 
+        valid_key, key_error = InputValidator.validate_api_key(api_key)
+        if not valid_key:
+            QMessageBox.critical(self, "Invalid API Key", key_error)
+            return
+
         credentials = {"api_key": api_key}
 
         try:
             success = self.app.service_manager.configure_service(
-                "textbelt", credentials
+                "textbelt", credentials, validate=True
             )
 
             if success:
@@ -537,8 +579,22 @@ class SettingsTab(QWidget):
 
     def _on_save_general_settings(self):
         """Save general settings"""
-        QMessageBox.information(self, "Success", "Settings saved successfully")
-
         check_interval = self.check_interval_spin.value()
-        # Update scheduler interval if supported
-        # self.app.scheduler.set_check_interval(check_interval * 60)  # Convert to seconds
+
+        if hasattr(self.app, "config"):
+            config = self.app.config
+            config.set(
+                "general.start_minimized", self.start_minimized_check.isChecked()
+            )
+            config.set("general.check_updates", self.check_updates_check.isChecked())
+            config.set(
+                "notification.show_notifications",
+                self.show_notifications_check.isChecked(),
+            )
+            config.set("notification.play_sound", self.play_sound_check.isChecked())
+            config.set("scheduler.check_interval", check_interval)
+
+        if hasattr(self.app, "scheduler"):
+            self.app.scheduler.set_check_interval(check_interval * 60)
+
+        QMessageBox.information(self, "Success", "Settings saved successfully")

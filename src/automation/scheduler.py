@@ -64,11 +64,17 @@ class MessageScheduler:
     def check_due_messages(self):
         """Check for and send any due scheduled messages"""
         with self.lock:
-            # Get all due messages from the database
             due_messages = self.db.get_due_scheduled_messages()
 
-            for message in due_messages:
-                self._process_scheduled_message(message)
+        for message in due_messages:
+            self._process_scheduled_message(message)
+
+    def set_check_interval(self, interval_seconds: int) -> None:
+        """Set how often due messages are checked."""
+        minutes = max(1, interval_seconds // 60)
+        schedule.clear()
+        schedule.every(minutes).minutes.do(self.check_due_messages)
+        logger.info("Scheduler check interval set to %d minute(s)", minutes)
 
     def _process_scheduled_message(self, message):
         """Process a single scheduled message"""
@@ -242,7 +248,7 @@ class MessageScheduler:
             # Reset the status to pending for the next occurrence
             self.db.update_scheduled_message(
                 message_id=message_id,
-                schedule_time=next_schedule_time,
+                scheduled_time=next_schedule_time,
                 status="pending",
             )
 

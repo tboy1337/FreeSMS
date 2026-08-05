@@ -3,9 +3,11 @@ SMS service manager module
 """
 
 import importlib
+import threading
 from typing import Any, Dict, List, Optional
 
 from src.api.sms_service import SMSResponse, SMSService
+from src.api.twilio_service import normalize_twilio_credentials
 from src.models.database import Database
 from src.utils.logger import get_logger
 
@@ -22,6 +24,7 @@ class SMSServiceManager:
         """
         self.db = db
         self.logger = get_logger()
+        self._lock = threading.RLock()
         self.active_service = None
         self.services = {}
 
@@ -112,6 +115,52 @@ class SMSServiceManager:
                 configured_services.append(service_name)
         return configured_services
 
+    @staticmethod
+    def _normalize_credentials(
+        service_name: str, credentials: Dict[str, str]
+    ) -> Dict[str, str]:
+        """Normalize service-specific credential keys before save/configure."""
+        if service_name == "twilio":
+            return normalize_twilio_credentials(credentials)
+        return dict(credentials)
+
+    def configure_service(
+        self,
+        service_name: str,
+        credentials: Dict[str, str],
+        *,
+        validate: bool = False,
+    ) -> bool:
+        """
+        Configure an SMS service and persist credentials.
+
+        Args:
+            service_name: Service identifier (e.g. twilio, textbelt)
+            credentials: Credential dictionary for the service
+            validate: When True, validate credentials before saving
+
+        Returns:
+            True if configuration and persistence succeeded
+        """
+        service = self.get_service_by_name(service_name)
+        if not service:
+            self.logger.error("Service not found: %s", service_name)
+            return False
+
+        normalized = self._normalize_credentials(service_name, credentials)
+
+        if hasattr(service, "configure"):
+            if not service.configure(normalized, validate=validate):
+                self.logger.error("Failed to configure service: %s", service_name)
+                return False
+
+        if not self.db.save_api_credentials(service_name, normalized):
+            self.logger.error("Failed to save credentials for: %s", service_name)
+            return False
+
+        self.logger.info("Service configured successfully: %s", service_name)
+        return True
+
     def set_active_service(self, service_name: str) -> bool:
         """
         Set the active SMS service
@@ -122,22 +171,23 @@ class SMSServiceManager:
         Returns:
             True if successful, False otherwise
         """
-        if service_name not in self.services:
-            self.logger.error(f"Service not found: {service_name}")
-            return False
+        with self._lock:
+            if service_name not in self.services:
+                self.logger.error(f"Service not found: {service_name}")
+                return False
 
-        # Get service
-        service = self.services[service_name]
+            # Get service
+            service = self.services[service_name]
 
-        # Update active service in database
-        credentials = self.db.get_api_credentials(service_name)
-        if credentials:
-            self.db.save_api_credentials(service_name, credentials, is_active=True)
+            # Update active service in database
+            credentials = self.db.get_api_credentials(service_name)
+            if credentials:
+                self.db.save_api_credentials(service_name, credentials, is_active=True)
 
-        # Set active service
-        self.active_service = service
-        self.logger.info(f"Active SMS service set to: {service_name}")
-        return True
+            # Set active service
+            self.active_service = service
+            self.logger.info(f"Active SMS service set to: {service_name}")
+            return True
 
     def send_sms(
         self, recipient: str, message: str, service_name: str = None
@@ -153,12 +203,11 @@ class SMSServiceManager:
         Returns:
             SMSResponse with the result
         """
-        # Use specified service or active service
-        service = None
-        if service_name:
-            service = self.get_service_by_name(service_name)
-        else:
-            service = self.active_service
+        with self._lock:
+            if service_name:
+                service = self.get_service_by_name(service_name)
+            else:
+                service = self.active_service
 
         # If no service available, return error
         if not service:

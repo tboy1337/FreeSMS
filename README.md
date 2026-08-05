@@ -67,6 +67,8 @@
      ```
    - **Using a .env file**: Create a `.env` file in the project root with the above variables
 
+   Twilio credentials stored in the app database use the `from_number` field (the `TWILIO_PHONE_NUMBER` environment variable maps to this automatically).
+
    Application data is stored under `~/.freesms/` (config, database, logs).
 
 5. **Run the application**

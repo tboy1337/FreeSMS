@@ -506,6 +506,49 @@ class TestSMSApplicationGUI:
         assert "SMS Services" in tab_titles
         assert "General Settings" in tab_titles
 
+    def test_settings_tab_save_twilio_credentials(self, qtbot):
+        """Settings tab should persist Twilio credentials via service manager."""
+        db_fd, db_path = tempfile.mkstemp()
+        os.close(db_fd)
+        db = Database(db_path)
+        service_manager = SMSServiceManager(db)
+
+        mock_app = MagicMock()
+        mock_app.db = db
+        mock_app.service_manager = service_manager
+        mock_app.config = ConfigService("test_settings_save")
+        mock_app.set_status = MagicMock()
+
+        try:
+            with (
+                patch("PySide6.QtWidgets.QMessageBox.information"),
+                patch("PySide6.QtWidgets.QMessageBox.critical"),
+                patch("threading.Thread"),
+            ):
+                tab = SettingsTab(mock_app)
+                qtbot.addWidget(tab)
+                tab._on_service_selected("Twilio")
+                tab.twilio_sid_entry.setText("ACtest123")
+                tab.twilio_token_entry.setText("auth_token_value")
+                tab.twilio_phone_entry.setText("+12125551234")
+
+                with patch.object(
+                    service_manager.get_service_by_name("twilio"),
+                    "configure",
+                    return_value=True,
+                ) as mock_configure:
+                    tab._on_save_twilio()
+                    mock_configure.assert_called_once()
+                    saved_args = mock_configure.call_args[0][0]
+                    assert saved_args["from_number"] == "+12125551234"
+
+                stored = db.get_api_credentials("twilio")
+                assert stored is not None
+                assert stored.get("from_number") == "+12125551234"
+        finally:
+            db.close()
+            os.unlink(db_path)
+
     def test_templates_tab(self, qtbot, setup_gui_test):
         """Test TemplatesTab functionality"""
         setup = setup_gui_test

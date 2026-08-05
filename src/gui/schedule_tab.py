@@ -28,6 +28,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.security.validation import InputValidator
+
 
 class ScheduleTab(QWidget):
     """Schedule and automation tab"""
@@ -298,7 +300,7 @@ class ScheduleTab(QWidget):
                         pass
 
                 # Format recurrence
-                recurrence = message.get("recurrence", "Once") or "Once"
+                recurrence = message.get("recurring", "Once") or "Once"
 
                 # Create table items
                 recipient_item = QTableWidgetItem(message["recipient"])
@@ -337,6 +339,16 @@ class ScheduleTab(QWidget):
 
         if not message:
             QMessageBox.critical(self, "Error", "Message is required")
+            return
+
+        valid_phone, phone_error = InputValidator.validate_phone_input(recipient)
+        if not valid_phone:
+            QMessageBox.critical(self, "Invalid Phone Number", phone_error)
+            return
+
+        valid_msg, msg_error = InputValidator.validate_message(message)
+        if not valid_msg:
+            QMessageBox.critical(self, "Invalid Message", msg_error)
             return
 
         # Get schedule time

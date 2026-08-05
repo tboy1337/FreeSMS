@@ -67,7 +67,7 @@ def test_search_contacts(contact_manager):
 
 def test_import_contacts_from_csv_invalid_header(contact_manager):
     """CSV without headers is rejected."""
-    count, errors = contact_manager.import_contacts_from_csv("no-header-data")
+    count, errors = contact_manager.import_contacts_from_csv("")
     assert count == 0
     assert errors
 

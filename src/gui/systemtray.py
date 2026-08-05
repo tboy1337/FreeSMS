@@ -10,6 +10,10 @@ from PySide6.QtCore import QObject, Signal
 from PySide6.QtGui import QAction, QIcon
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from src.utils.logger import get_logger
+
+logger = get_logger("freesms.systemtray")
+
 
 class SystemTrayIcon(QObject):
     """PySide6 system tray icon implementation"""
@@ -36,7 +40,7 @@ class SystemTrayIcon(QObject):
 
         # Check if system tray is available
         if not QSystemTrayIcon.isSystemTrayAvailable():
-            print("System tray is not available on this system.")
+            logger.warning("System tray is not available on this system.")
             return
 
         self._init_tray()
@@ -63,7 +67,7 @@ class SystemTrayIcon(QObject):
             self.tray_icon.show()
 
         except Exception as e:
-            print(f"Failed to initialize system tray: {e}")
+            logger.error("Failed to initialize system tray: %s", e)
 
     def _load_icon(self):
         """Load icon for the tray"""

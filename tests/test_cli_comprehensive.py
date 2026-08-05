@@ -783,14 +783,17 @@ class TestCLIServiceFeatures:
         mock_service = MagicMock()
         mock_service.configure.return_value = True
         cli.service_manager.get_service_by_name.return_value = mock_service
-        cli.db.save_api_credentials.return_value = True
+        cli.service_manager.configure_service.return_value = True
 
-        creds_json = '{"account_sid":"sid","auth_token":"token","phone_number":"+1"}'
+        creds_json = '{"account_sid":"sid","auth_token":"token","from_number":"+1"}'
         result = cli.configure_service("twilio", creds_json)
 
         cli.service_manager.get_service_by_name.assert_called_once_with("twilio")
-        cli.db.save_api_credentials.assert_called_once()
-        mock_service.configure.assert_called_once()
+        cli.service_manager.configure_service.assert_called_once_with(
+            "twilio",
+            {"account_sid": "sid", "auth_token": "token", "from_number": "+1"},
+            validate=True,
+        )
         assert result is True
 
     @patch("src.cli.cli.SMSCommandLineInterface._initialize_services")

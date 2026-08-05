@@ -525,26 +525,20 @@ class SMSCommandLineInterface:
             print("Error: Invalid JSON for credentials")
             return False
 
-        # Get service
-        service = self.service_manager.get_service_by_name(service_name)
-        if not service:
+        if not self.service_manager.get_service_by_name(service_name):
             print(f"Error: Service '{service_name}' not found")
             return False
 
-        # Save credentials
-        result = self.db.save_api_credentials(service_name, credentials)
+        result = self.service_manager.configure_service(
+            service_name, credentials, validate=True
+        )
 
         if result:
             print(f"Service '{service_name}' configured successfully")
-
-            # Configure the service
-            if hasattr(service, "configure"):
-                service.configure(credentials)
-
             return True
-        else:
-            print(f"Failed to configure service '{service_name}'")
-            return False
+
+        print(f"Failed to configure service '{service_name}'")
+        return False
 
     def set_active_service(self, service_name):
         """

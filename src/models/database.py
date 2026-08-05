@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 from src.security.encryption import (
+    CredentialEncryptionError,
     decrypt_credentials,
     encrypt_credentials,
     is_legacy_plaintext,
@@ -242,6 +243,9 @@ class Database:
             self.logger.info(f"API credentials saved for {service_name}")
             return True
 
+        except CredentialEncryptionError as e:
+            self.logger.error("Error encrypting API credentials: %s", e)
+            return False
         except sqlite3.Error as e:
             self.logger.error(f"Error saving API credentials: {e}")
             return False
@@ -567,6 +571,29 @@ class Database:
             return []
 
     @_db_locked
+    def get_message_history_by_id(self, message_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Get a single message history record by ID.
+
+        Args:
+            message_id: Message history row ID
+
+        Returns:
+            Message dictionary or None if not found
+        """
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT * FROM message_history WHERE id = ?", (message_id,))
+            row = cursor.fetchone()
+            if row:
+                return dict(row)
+            return None
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error getting message history by id: {e}")
+            return None
+
+    @_db_locked
     def save_scheduled_message(
         self,
         recipient: str,
@@ -576,7 +603,7 @@ class Database:
         recurring: str = None,
         recurring_interval: int = None,
         recurrence_data: dict = None,
-    ) -> int:
+    ) -> Optional[int]:
         """
         Save a scheduled message
 

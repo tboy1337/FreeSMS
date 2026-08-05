@@ -19,6 +19,7 @@ if project_root not in sys.path:
 
 # Import application modules
 from src.models.database import Database
+from src.security.encryption import CredentialEncryptionError
 
 
 class TestDatabaseComprehensive:
@@ -732,6 +733,33 @@ class TestDatabaseComprehensive:
         self.db.conn.commit()
 
         assert self.db.get_api_credentials("twilio") is None
+
+    def test_get_message_history_by_id(self):
+        """Fetch a single message history record by ID."""
+        saved = self.db.save_message_history(
+            recipient="+12125551234",
+            message="Lookup test",
+            service="twilio",
+            status="sent",
+        )
+        assert saved
+
+        messages = self.db.get_message_history(limit=1)
+        message_id = messages[0]["id"]
+
+        record = self.db.get_message_history_by_id(message_id)
+        assert record is not None
+        assert record["message"] == "Lookup test"
+        assert self.db.get_message_history_by_id(99999) is None
+
+    def test_save_api_credentials_encryption_failure(self):
+        """Encryption failures during credential save return False."""
+        with patch(
+            "src.models.database.encrypt_credentials",
+            side_effect=CredentialEncryptionError("keyring unavailable"),
+        ):
+            result = self.db.save_api_credentials("twilio", {"api_key": "test"})
+        assert not result
 
     def test_count_successful_sends_today(self):
         """Count successful sends for the current day."""

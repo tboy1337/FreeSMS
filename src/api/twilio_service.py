@@ -17,6 +17,16 @@ from src.api.sms_service import SMSResponse, SMSService
 from src.utils.logger import get_logger
 
 
+def normalize_twilio_credentials(credentials: Dict[str, str]) -> Dict[str, str]:
+    """Normalize Twilio credential keys to use from_number."""
+    normalized = dict(credentials)
+    from_number = normalized.get("from_number") or normalized.get("phone_number")
+    if from_number:
+        normalized["from_number"] = from_number
+    normalized.pop("phone_number", None)
+    return normalized
+
+
 class TwilioService(SMSService):
     """Twilio SMS service implementation"""
 
@@ -59,9 +69,10 @@ class TwilioService(SMSService):
             True if configured successfully, False otherwise
         """
         try:
-            self.account_sid = credentials.get("account_sid")
-            self.auth_token = credentials.get("auth_token")
-            self.from_number = credentials.get("from_number")
+            normalized = normalize_twilio_credentials(credentials)
+            self.account_sid = normalized.get("account_sid")
+            self.auth_token = normalized.get("auth_token")
+            self.from_number = normalized.get("from_number")
 
             if not all([self.account_sid, self.auth_token, self.from_number]):
                 self.logger.error("Missing required Twilio credentials")

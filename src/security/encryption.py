@@ -17,16 +17,27 @@ KEYRING_KEY_NAME = "encryption_key"
 ENCRYPTED_PREFIX = "enc:"
 
 
+class CredentialEncryptionError(Exception):
+    """Raised when credential encryption or keyring access fails."""
+
+
 def _get_or_create_key() -> bytes:
     """Load encryption key from keyring or create and store a new one."""
-    stored = keyring.get_password(KEYRING_SERVICE, KEYRING_KEY_NAME)
-    if stored:
-        return stored.encode("utf-8")
+    try:
+        stored = keyring.get_password(KEYRING_SERVICE, KEYRING_KEY_NAME)
+        if stored:
+            return stored.encode("utf-8")
 
-    key = Fernet.generate_key()
-    keyring.set_password(KEYRING_SERVICE, KEYRING_KEY_NAME, key.decode("utf-8"))
-    logger.info("Generated new encryption key in keyring")
-    return key
+        key = Fernet.generate_key()
+        keyring.set_password(KEYRING_SERVICE, KEYRING_KEY_NAME, key.decode("utf-8"))
+        logger.info("Generated new encryption key in keyring")
+        return key
+    except Exception as exc:
+        logger.error("Keyring access failed: %s", exc)
+        raise CredentialEncryptionError(
+            "Unable to access the OS credential store for encryption. "
+            "Ensure a keyring backend is available or run in an interactive session."
+        ) from exc
 
 
 def _get_fernet() -> Fernet:

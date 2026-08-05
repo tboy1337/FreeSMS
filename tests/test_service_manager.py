@@ -326,6 +326,61 @@ class TestSMSServiceManager:
         self.mock_twilio_service.get_delivery_status.assert_not_called()
         self.mock_textbelt_service.get_delivery_status.assert_not_called()
 
+    def test_configure_service_success(self):
+        """Test configuring a service saves normalized credentials."""
+        self.db.save_api_credentials.return_value = True
+        credentials = {
+            "account_sid": "test_sid",
+            "auth_token": "test_token",
+            "phone_number": "+12345678901",
+        }
+
+        result = self.manager.configure_service("twilio", credentials)
+
+        assert result is True
+        self.db.save_api_credentials.assert_called_once_with(
+            "twilio",
+            {
+                "account_sid": "test_sid",
+                "auth_token": "test_token",
+                "from_number": "+12345678901",
+            },
+        )
+        self.mock_twilio_service.configure.assert_called()
+
+    def test_configure_service_not_found(self):
+        """Test configure_service returns False for unknown service."""
+        result = self.manager.configure_service("invalid", {"api_key": "x"})
+        assert result is False
+        self.db.save_api_credentials.assert_not_called()
+
+    def test_configure_service_configure_failure(self):
+        """Test configure_service returns False when configure fails."""
+        self.mock_twilio_service.configure.return_value = False
+        credentials = {
+            "account_sid": "test_sid",
+            "auth_token": "test_token",
+            "from_number": "+12345678901",
+        }
+
+        result = self.manager.configure_service("twilio", credentials)
+
+        assert result is False
+        self.db.save_api_credentials.assert_not_called()
+
+    def test_configure_service_save_failure(self):
+        """Test configure_service returns False when database save fails."""
+        self.db.save_api_credentials.return_value = False
+        credentials = {
+            "account_sid": "test_sid",
+            "auth_token": "test_token",
+            "from_number": "+12345678901",
+        }
+
+        result = self.manager.configure_service("twilio", credentials)
+
+        assert result is False
+
 
 class TestSMSServiceManagerImportErrors:
     """Test case for SMS Service Manager import errors"""

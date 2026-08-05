@@ -56,3 +56,20 @@ def test_is_legacy_plaintext_invalid_json() -> None:
 def test_parse_legacy_credentials_invalid() -> None:
     """Invalid legacy JSON returns None."""
     assert parse_legacy_credentials("not-json") is None
+
+
+def test_keyring_failure_raises_credential_encryption_error() -> None:
+    """Keyring failures raise CredentialEncryptionError."""
+    from unittest.mock import patch
+
+    from src.security.encryption import CredentialEncryptionError, encrypt_credentials
+
+    with patch(
+        "src.security.encryption.keyring.get_password",
+        side_effect=OSError("no keyring"),
+    ):
+        try:
+            encrypt_credentials({"api_key": "test"})
+            raise AssertionError("Expected CredentialEncryptionError")
+        except CredentialEncryptionError as exc:
+            assert "credential store" in str(exc).lower()

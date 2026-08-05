@@ -220,10 +220,7 @@ class HistoryTab(QWidget):
         message_id = recipient_item.data(Qt.ItemDataRole.UserRole)
 
         try:
-            self.app.db.cursor.execute(
-                "SELECT * FROM message_history WHERE id = ?", (message_id,)
-            )
-            message = self.app.db.cursor.fetchone()
+            message = self.app.db.get_message_history_by_id(message_id)
 
             if message:
                 self.current_message = message
