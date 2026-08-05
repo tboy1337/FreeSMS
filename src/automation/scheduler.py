@@ -131,9 +131,12 @@ class MessageScheduler:
                 if recurrence:
                     self._update_recurring_message(message)
                 else:
-                    # For one-time messages, mark as sent
+                    # For one-time messages, mark as completed
+                    completed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     self.db.update_scheduled_message_status(
-                        message_id=message_id, status="sent"
+                        message_id=message_id,
+                        status="completed",
+                        completed_at=completed_at,
                     )
 
                 # Trigger any callback for successful sending
@@ -374,7 +377,10 @@ class MessageScheduler:
                             message["recurring_interval"]
                         )
                     except json.JSONDecodeError:
-                        pass
+                        logger.debug(
+                            "Could not parse recurring_interval for message %s",
+                            message.get("id"),
+                        )
 
             return messages
 

@@ -23,6 +23,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class MessageTab(QWidget):
     """Message composition and sending tab"""
@@ -156,7 +160,7 @@ class MessageTab(QWidget):
                 self.template_combo.addItem(name)
                 self.templates[name] = template["content"]
         except Exception:
-            # If database is not available or no templates exist
+            logger.debug("Could not load message templates", exc_info=True)
             self.template_combo.clear()
             self.template_combo.addItem("-- No Templates Available --")
             self.templates = {}

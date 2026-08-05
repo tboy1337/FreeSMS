@@ -164,15 +164,13 @@ class ContactManager:
     def _validate_phone_number(self, phone: str, country: str) -> Tuple[bool, str]:
         """Validate and format a phone number"""
         try:
-            # If the phone doesn't start with +, add the country code
-            if not phone.startswith("+"):
-                # If the country already has +, don't add another
-                prefix = "" if country.startswith("+") else "+"
-                # Parse with country code
-                parsed = phonenumbers.parse(f"{prefix}{country}{phone}", None)
-            else:
-                # Parse as is if it has +
+            region = (
+                country.upper() if country and not country.startswith("+") else None
+            )
+            if phone.startswith("+"):
                 parsed = phonenumbers.parse(phone, None)
+            else:
+                parsed = phonenumbers.parse(phone, region or "US")
 
             # Check if it's a valid number
             if not phonenumbers.is_valid_number(parsed):

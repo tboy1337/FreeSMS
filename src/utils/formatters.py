@@ -3,6 +3,7 @@ Formatting utilities for SMS application
 """
 
 import re
+from datetime import datetime
 from typing import Optional, Tuple
 
 import phonenumbers
@@ -107,8 +108,6 @@ def format_delivery_time(timestamp: str) -> str:
     Returns:
         Formatted datetime string
     """
-    from datetime import datetime
-
     try:
         dt = datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
         return dt.strftime("%Y-%m-%d %H:%M")

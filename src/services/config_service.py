@@ -59,12 +59,7 @@ class ConfigService:
         return {
             "general": {
                 "start_minimized": False,
-                "check_updates": True,
                 "save_window_position": True,
-            },
-            "notification": {
-                "show_notifications": True,
-                "play_sound": True,
             },
             "scheduler": {
                 "check_interval": 1,

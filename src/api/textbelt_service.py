@@ -33,12 +33,13 @@ class TextBeltService(SMSService):
         if api_key:
             self.configure({"api_key": api_key})
 
-    def configure(self, credentials: Dict[str, str]) -> bool:
+    def configure(self, credentials: Dict[str, str], validate: bool = False) -> bool:
         """
         Configure the TextBelt service with credentials
 
         Args:
             credentials: Dictionary with api_key
+            validate: Whether to validate credentials after configuration
 
         Returns:
             True if configured successfully, False otherwise
@@ -50,8 +51,7 @@ class TextBeltService(SMSService):
                 self.logger.error("Missing TextBelt API key")
                 return False
 
-            # Validate credentials
-            if not self.validate_credentials():
+            if validate and not self.validate_credentials():
                 self.logger.error("Invalid TextBelt API key")
                 return False
 

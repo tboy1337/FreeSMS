@@ -44,6 +44,10 @@ def _format_db_timestamp(value: datetime | str) -> str:
     return value
 
 
+class DatabaseError(Exception):
+    """Raised when the database cannot be initialized or accessed."""
+
+
 class Database:
     """SQLite database for SMS application"""
 
@@ -87,11 +91,12 @@ class Database:
             self._create_tables()
 
             self.logger.info(f"Database initialized at {self.db_path}")
-            return True
 
         except sqlite3.Error as e:
             self.logger.error(f"Database initialization error: {e}")
-            return False
+            raise DatabaseError(
+                f"Failed to initialize database at {self.db_path}: {e}"
+            ) from e
 
     def _create_tables(self):
         """Create database tables if they don't exist"""
@@ -792,13 +797,16 @@ class Database:
             return False
 
     @_db_locked
-    def save_message_template(self, name: str, content: str) -> bool:
+    def save_message_template(
+        self, name: str, content: str, template_id: Optional[int] = None
+    ) -> bool:
         """
         Save a message template
 
         Args:
             name: Template name
             content: Template content
+            template_id: When set, update the template with this ID
 
         Returns:
             True if successful, False otherwise
@@ -806,29 +814,44 @@ class Database:
         try:
             cursor = self.conn.cursor()
 
-            # Check if template already exists with this name
-            cursor.execute("SELECT id FROM message_templates WHERE name = ?", (name,))
-            row = cursor.fetchone()
-
-            if row:
-                # Update existing template
+            if template_id is not None:
                 cursor.execute(
                     """
-                UPDATE message_templates 
-                SET content = ?, updated_at = CURRENT_TIMESTAMP 
+                UPDATE message_templates
+                SET name = ?, content = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                    (name, content, template_id),
+                )
+                if cursor.rowcount == 0:
+                    self.logger.error("Template not found for update: %s", template_id)
+                    return False
+            else:
+                # Check if template already exists with this name
+                cursor.execute(
+                    "SELECT id FROM message_templates WHERE name = ?", (name,)
+                )
+                row = cursor.fetchone()
+
+                if row:
+                    # Update existing template
+                    cursor.execute(
+                        """
+                UPDATE message_templates
+                SET content = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE name = ?
                 """,
-                    (content, name),
-                )
-            else:
-                # Insert new template
-                cursor.execute(
-                    """
-                INSERT INTO message_templates (name, content) 
+                        (content, name),
+                    )
+                else:
+                    # Insert new template
+                    cursor.execute(
+                        """
+                INSERT INTO message_templates (name, content)
                 VALUES (?, ?)
                 """,
-                    (name, content),
-                )
+                        (name, content),
+                    )
 
             self.conn.commit()
             self.logger.info(f"Message template saved: {name}")
@@ -890,36 +913,37 @@ class Database:
         return self.get_message_templates()
 
     @_db_locked
-    def save_template(self, name: str, content: str) -> bool:
+    def save_template(
+        self, name: str, content: str, template_id: Optional[int] = None
+    ) -> bool:
         """
         Save a message template (alias for save_message_template)
 
         Args:
             name: Template name
             content: Template content
+            template_id: When set, update the template with this ID
 
         Returns:
             True if successful, False otherwise
         """
-        return self.save_message_template(name, content)
+        return self.save_message_template(name, content, template_id=template_id)
 
     @_db_locked
     def get_cursor(self):
         """
-        Get the database cursor
+        Get the database cursor.
 
-        Returns:
-            SQLite cursor object
+        Intended for tests only; production code should use locked Database methods.
         """
         return self.conn.cursor()
 
     @_db_locked
     def get_connection(self):
         """
-        Get the database connection
+        Get the database connection.
 
-        Returns:
-            SQLite connection object
+        Intended for tests only; production code should use locked Database methods.
         """
         return self.conn
 

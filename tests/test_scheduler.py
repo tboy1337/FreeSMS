@@ -9,7 +9,7 @@ import sys
 import time
 import unittest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, Mock, call, patch
+from unittest.mock import ANY, MagicMock, Mock, call, patch
 
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -164,7 +164,7 @@ class TestMessageScheduler(unittest.TestCase):
             recipient="+1234567890", message="Test message", service_name="twilio"
         )
         self.mock_db.update_scheduled_message_status.assert_called_once_with(
-            message_id=1, status="sent"
+            message_id=1, status="completed", completed_at=ANY
         )
         mock_callback.assert_called_once_with(
             "message_sent",

@@ -152,8 +152,8 @@ class TestTextBeltServiceDetailed:
 
         # Mock validate_credentials to return False
         with patch.object(service, "validate_credentials", return_value=False):
-            # Configure with invalid credentials
-            result = service.configure({"api_key": "invalid"})
+            # Configure with invalid credentials (validate explicitly)
+            result = service.configure({"api_key": "invalid"}, validate=True)
 
             # Verify result
             assert not result
@@ -169,6 +169,22 @@ class TestTextBeltServiceDetailed:
         # Verify result
         assert not result
 
+    def test_configure_skips_validation_by_default(self):
+        """Passive configure should not call validate_credentials."""
+        service = TextBeltService()
+        with patch.object(service, "validate_credentials") as mock_validate:
+            assert service.configure({"api_key": "textbelt"})
+            mock_validate.assert_not_called()
+
+    def test_configure_validates_when_requested(self):
+        """Explicit validation runs validate_credentials."""
+        service = TextBeltService()
+        with patch.object(
+            service, "validate_credentials", return_value=True
+        ) as mock_validate:
+            assert service.configure({"api_key": "textbelt"}, validate=True)
+            mock_validate.assert_called_once()
+
     def test_configure_exception(self):
         """Test exception handling in configure method"""
         # Create a new service
@@ -178,8 +194,8 @@ class TestTextBeltServiceDetailed:
         with patch.object(
             service, "validate_credentials", side_effect=Exception("Test error")
         ):
-            # Configure should handle the exception
-            result = service.configure({"api_key": "test"})
+            # Configure should handle the exception when validating
+            result = service.configure({"api_key": "test"}, validate=True)
 
             # Verify result
             assert not result

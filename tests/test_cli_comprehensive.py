@@ -517,7 +517,8 @@ class TestCLISchedulingFeatures:
 
         cli.validator.validate_phone_input.return_value = (True, None)
         cli.validator.validate_message.return_value = (True, None)
-        cli.db.save_scheduled_message.return_value = 1
+        cli.scheduler = MagicMock()
+        cli.scheduler.schedule_message.return_value = 1
 
         future_time = (datetime.now() + timedelta(days=2)).isoformat()
         result = cli.schedule_message(
@@ -526,7 +527,7 @@ class TestCLISchedulingFeatures:
 
         cli.validator.validate_phone_input.assert_called_once_with("+1234567890")
         cli.validator.validate_message.assert_called_once_with("Test message")
-        cli.db.save_scheduled_message.assert_called_once()
+        cli.scheduler.schedule_message.assert_called_once()
         assert result is True
 
     @patch("src.cli.cli.SMSCommandLineInterface._initialize_services")
@@ -982,7 +983,7 @@ class TestCLIImportExportFeatures:
         """Test successful contacts import"""
         cli = SMSCommandLineInterface()
         cli.db = MagicMock()
-        cli.validator = MagicMock()
+        cli.contact_manager = MagicMock()
         cli.logger = MagicMock()
 
         # Mock file exists
@@ -994,9 +995,7 @@ class TestCLIImportExportFeatures:
         )
         mock_open_func.return_value.__enter__.return_value = csv_data
 
-        # Mock successful validation and addition
-        cli.validator.validate_phone_input.return_value = (True, None)
-        cli.db.save_contact.return_value = True
+        cli.contact_manager.import_contacts_from_csv.return_value = (2, [])
 
         # Test importing contacts
         result = cli.import_contacts("test_contacts.csv")
@@ -1006,16 +1005,10 @@ class TestCLIImportExportFeatures:
 
         # Verify file was opened for reading
         mock_open_func.assert_called_once_with(
-            "test_contacts.csv", "r", newline="", encoding="utf-8"
+            "test_contacts.csv", "r", encoding="utf-8"
         )
 
-        # Verify validation was called for each contact
-        assert cli.validator.validate_phone_input.call_count == 2
-
-        # Verify contacts were added
-        assert cli.db.save_contact.call_count == 2
-
-        # Verify result
+        cli.contact_manager.import_contacts_from_csv.assert_called_once()
         assert result is True
 
     @patch("src.cli.cli.SMSCommandLineInterface._initialize_services")
@@ -1342,19 +1335,17 @@ class TestMainFunction:
     @patch("src.cli.cli.SMSCommandLineInterface")
     def test_main_no_command(self, mock_cli_class):
         """Test main function with no command (should show help)"""
-        sys.argv = ["cli.py"]
+        with patch("src.cli.cli.build_parser") as mock_build_parser:
+            mock_parser = MagicMock()
+            mock_args = MagicMock()
+            mock_args.command = None
+            mock_parser.parse_args.return_value = mock_args
+            mock_build_parser.return_value = mock_parser
 
-        mock_cli_instance = MagicMock()
-        mock_cli_class.return_value = mock_cli_instance
+            assert main() == 0
 
-        mock_args = MagicMock()
-        mock_args.command = None
-        with patch("src.cli.cli.parse_args", side_effect=[mock_args, SystemExit(0)]):
-            with pytest.raises(SystemExit):
-                main()
-
-        mock_cli_class.assert_called_once()
-        mock_cli_instance.shutdown.assert_called_once()
+            mock_parser.print_help.assert_called_once()
+            mock_cli_class.assert_not_called()
 
     @patch("src.cli.cli.SMSCommandLineInterface")
     def test_main_exception_handling(self, mock_cli_class):

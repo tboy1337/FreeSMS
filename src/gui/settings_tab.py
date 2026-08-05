@@ -25,6 +25,9 @@ from PySide6.QtWidgets import (
 )
 
 from src.security.validation import InputValidator
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class SettingsTab(QWidget):
@@ -132,25 +135,7 @@ class SettingsTab(QWidget):
         self.start_minimized_check = QCheckBox("Start minimized to system tray")
         app_layout.addWidget(self.start_minimized_check)
 
-        self.check_updates_check = QCheckBox("Check for updates on startup")
-        self.check_updates_check.setChecked(True)
-        app_layout.addWidget(self.check_updates_check)
-
         general_layout.addWidget(app_group)
-
-        # Notification settings
-        notification_group = QGroupBox("Notification Settings")
-        notification_layout = QVBoxLayout(notification_group)
-
-        self.show_notifications_check = QCheckBox("Show desktop notifications")
-        self.show_notifications_check.setChecked(True)
-        notification_layout.addWidget(self.show_notifications_check)
-
-        self.play_sound_check = QCheckBox("Play sound on message sent/received")
-        self.play_sound_check.setChecked(True)
-        notification_layout.addWidget(self.play_sound_check)
-
-        general_layout.addWidget(notification_group)
 
         # Scheduler settings
         scheduler_group = QGroupBox("Scheduler Settings")
@@ -200,6 +185,7 @@ class SettingsTab(QWidget):
                 self.active_service_label.setText("None")
                 self.quota_label.setText("N/A")
         except Exception:
+            logger.debug("Could not load service status in settings", exc_info=True)
             self.active_service_label.setText("None")
             self.quota_label.setText("N/A")
 
@@ -207,15 +193,6 @@ class SettingsTab(QWidget):
             config = self.app.config
             self.start_minimized_check.setChecked(
                 bool(config.get("general.start_minimized", False))
-            )
-            self.check_updates_check.setChecked(
-                bool(config.get("general.check_updates", True))
-            )
-            self.show_notifications_check.setChecked(
-                bool(config.get("notification.show_notifications", True))
-            )
-            self.play_sound_check.setChecked(
-                bool(config.get("notification.play_sound", True))
             )
             self.check_interval_spin.setValue(
                 int(config.get("scheduler.check_interval", 1))
@@ -421,6 +398,7 @@ class SettingsTab(QWidget):
                 self.dialog_error.emit("Error", "Failed to connect to Twilio")
 
         except Exception as e:
+            logger.exception("Error testing Twilio: %s", e)
             self.dialog_error.emit("Error", f"Error testing Twilio: {str(e)}")
 
         self.status_message.emit("Ready")
@@ -467,6 +445,7 @@ class SettingsTab(QWidget):
             else:
                 QMessageBox.critical(self, "Error", "Failed to save Twilio credentials")
         except Exception as e:
+            logger.exception("Failed to save Twilio credentials: %s", e)
             QMessageBox.critical(
                 self, "Error", f"Failed to save Twilio credentials: {str(e)}"
             )
@@ -510,6 +489,7 @@ class SettingsTab(QWidget):
                 self.dialog_error.emit("Error", "Failed to connect to TextBelt")
 
         except Exception as e:
+            logger.exception("Error testing TextBelt: %s", e)
             self.dialog_error.emit("Error", f"Error testing TextBelt: {str(e)}")
 
         self.status_message.emit("Ready")
@@ -544,6 +524,7 @@ class SettingsTab(QWidget):
                     self, "Error", "Failed to save TextBelt credentials"
                 )
         except Exception as e:
+            logger.exception("Failed to save TextBelt credentials: %s", e)
             QMessageBox.critical(
                 self, "Error", f"Failed to save TextBelt credentials: {str(e)}"
             )
@@ -573,6 +554,7 @@ class SettingsTab(QWidget):
                     f"Failed to set {service_name} as active service. Is it configured?",
                 )
         except Exception as e:
+            logger.exception("Failed to set active service: %s", e)
             QMessageBox.critical(
                 self, "Error", f"Failed to set active service: {str(e)}"
             )
@@ -586,12 +568,6 @@ class SettingsTab(QWidget):
             config.set(
                 "general.start_minimized", self.start_minimized_check.isChecked()
             )
-            config.set("general.check_updates", self.check_updates_check.isChecked())
-            config.set(
-                "notification.show_notifications",
-                self.show_notifications_check.isChecked(),
-            )
-            config.set("notification.play_sound", self.play_sound_check.isChecked())
             config.set("scheduler.check_interval", check_interval)
 
         if hasattr(self.app, "scheduler"):

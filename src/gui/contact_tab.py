@@ -23,6 +23,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class ContactTab(QWidget):
     """Contact management tab"""
@@ -67,14 +71,6 @@ class ContactTab(QWidget):
         self.add_button = QPushButton("Add Contact")
         self.add_button.clicked.connect(self._on_add_contact)
         top_layout.addWidget(self.add_button)
-
-        self.import_button = QPushButton("Import")
-        self.import_button.clicked.connect(self._on_import)
-        top_layout.addWidget(self.import_button)
-
-        self.export_button = QPushButton("Export")
-        self.export_button.clicked.connect(self._on_export)
-        top_layout.addWidget(self.export_button)
 
         layout.addWidget(top_frame)
 
@@ -193,6 +189,7 @@ class ContactTab(QWidget):
                 self.contact_table.setItem(row, 2, country_item)
 
         except Exception as e:
+            logger.exception("Failed to load contacts: %s", e)
             QMessageBox.critical(self, "Error", f"Failed to load contacts: {str(e)}")
 
     def _on_search(self):
@@ -228,6 +225,7 @@ class ContactTab(QWidget):
                 self.contact_table.setItem(row, 2, country_item)
 
         except Exception as e:
+            logger.exception("Contact search failed: %s", e)
             QMessageBox.critical(self, "Error", f"Search failed: {str(e)}")
 
     def _on_add_contact(self):
@@ -258,13 +256,14 @@ class ContactTab(QWidget):
                 self.notes_entry.setPlainText(contact.get("notes", ""))
 
                 # Set country
-                country_code = contact.get("country_code", "US")
+                country_code = contact.get("country", "US")
                 for i in range(self.country_combo.count()):
                     item_text = self.country_combo.itemText(i)
                     if self.country_codes.get(item_text) == country_code:
                         self.country_combo.setCurrentIndex(i)
                         break
         except Exception as e:
+            logger.exception("Failed to load contact: %s", e)
             QMessageBox.critical(self, "Error", f"Failed to load contact: {str(e)}")
 
     def _on_save_contact(self):
@@ -307,6 +306,7 @@ class ContactTab(QWidget):
             else:
                 QMessageBox.critical(self, "Error", "Failed to save contact")
         except Exception as e:
+            logger.exception("Failed to save contact: %s", e)
             QMessageBox.critical(self, "Error", f"Failed to save contact: {str(e)}")
 
     def _on_delete_contact(self):
@@ -331,6 +331,7 @@ class ContactTab(QWidget):
                     else:
                         QMessageBox.critical(self, "Error", "Failed to delete contact")
                 except Exception as e:
+                    logger.exception("Failed to delete contact: %s", e)
                     QMessageBox.critical(
                         self, "Error", f"Failed to delete contact: {str(e)}"
                     )
@@ -338,18 +339,6 @@ class ContactTab(QWidget):
             QMessageBox.information(
                 self, "Information", "Please select a contact to delete"
             )
-
-    def _on_import(self):
-        """Handle import button click"""
-        QMessageBox.information(
-            self, "Import", "Import functionality will be implemented soon."
-        )
-
-    def _on_export(self):
-        """Handle export button click"""
-        QMessageBox.information(
-            self, "Export", "Export functionality will be implemented soon."
-        )
 
     def _clear_form(self):
         """Clear the contact form"""

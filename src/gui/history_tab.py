@@ -22,6 +22,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class HistoryTab(QWidget):
     """Message history view tab"""
@@ -124,11 +128,6 @@ class HistoryTab(QWidget):
         button_layout = QHBoxLayout(button_frame)
         button_layout.addStretch()
 
-        self.check_status_button = QPushButton("Check Status")
-        self.check_status_button.setEnabled(False)
-        self.check_status_button.clicked.connect(self._on_check_status)
-        button_layout.addWidget(self.check_status_button)
-
         self.resend_button = QPushButton("Resend")
         self.resend_button.setEnabled(False)
         self.resend_button.clicked.connect(self._on_resend)
@@ -208,6 +207,7 @@ class HistoryTab(QWidget):
                 self.history_table.setItem(row, 4, QTableWidgetItem(str(sent_at)))
 
         except Exception as e:
+            logger.exception("Failed to load history: %s", e)
             QMessageBox.critical(self, "Error", f"Failed to load history: {str(e)}")
 
     def _on_message_selected(self, index):
@@ -244,24 +244,13 @@ class HistoryTab(QWidget):
 
                 self.detail_message.setPlainText(message["message"])
 
-                # Enable/disable buttons
-                if message["status"] == "sent" and message["message_id"]:
-                    self.check_status_button.setEnabled(True)
-                else:
-                    self.check_status_button.setEnabled(False)
-
                 self.resend_button.setEnabled(True)
 
         except Exception as e:
+            logger.exception("Failed to load message details: %s", e)
             QMessageBox.critical(
                 self, "Error", f"Failed to load message details: {str(e)}"
             )
-
-    def _on_check_status(self):
-        """Check delivery status of selected message"""
-        QMessageBox.information(
-            self, "Check Status", "Status checking will be implemented soon."
-        )
 
     def _on_resend(self):
         """Resend the selected message"""
@@ -293,7 +282,6 @@ class HistoryTab(QWidget):
         self.detail_message_id.clear()
         self.detail_message.clear()
 
-        self.check_status_button.setEnabled(False)
         self.resend_button.setEnabled(False)
 
         if hasattr(self, "current_message"):

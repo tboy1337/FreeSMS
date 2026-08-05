@@ -19,6 +19,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class TemplatesTab(QWidget):
     """Message templates management tab"""
@@ -156,6 +160,7 @@ class TemplatesTab(QWidget):
                 }
 
         except Exception as e:
+            logger.exception("Failed to load templates: %s", e)
             QMessageBox.critical(self, "Error", f"Failed to load templates: {str(e)}")
 
     def _on_template_selected(self):
@@ -202,16 +207,16 @@ class TemplatesTab(QWidget):
             return
 
         # Check for duplicate name when creating new template
-        if not hasattr(self, "editing_template_id"):
-            if name in self.templates:
-                QMessageBox.critical(
-                    self, "Error", f"A template with the name '{name}' already exists"
-                )
-                self.name_entry.setFocus()
-                return
+        editing_id = getattr(self, "editing_template_id", None)
+        if editing_id is None and name in self.templates:
+            QMessageBox.critical(
+                self, "Error", f"A template with the name '{name}' already exists"
+            )
+            self.name_entry.setFocus()
+            return
 
         try:
-            success = self.app.db.save_template(name, content)
+            success = self.app.db.save_template(name, content, template_id=editing_id)
 
             if success:
                 QMessageBox.information(
@@ -223,6 +228,7 @@ class TemplatesTab(QWidget):
                 QMessageBox.critical(self, "Error", f"Failed to save template '{name}'")
 
         except Exception as e:
+            logger.exception("Failed to save template: %s", e)
             QMessageBox.critical(self, "Error", f"Failed to save template: {str(e)}")
 
     def _clear_editor(self):

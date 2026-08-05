@@ -40,14 +40,27 @@
    ```
 
 2. **Install dependencies**
+
+   Recommended (editable install with console scripts):
+   ```bash
+   pip install -e .
+   ```
+
+   Or install from requirements files:
    ```bash
    pip install -r requirements.txt
    ```
 
    For development and testing:
    ```bash
-   pip install -r requirements-dev.txt
+   pip install -e ".[dev]"
    ```
+   (or `pip install -r requirements-dev.txt`)
+
+   After editable install, these commands are available:
+   - `freesms` — launch GUI or CLI (same as `python run.py`)
+   - `freesms-cli` — CLI only
+   - `freesms-gui` — GUI only
 
 3. **Register for SMS API services**
    - [Twilio](https://www.twilio.com/try-twilio) - Create a free account
@@ -108,7 +121,8 @@ python run.py cli send "+1234567890" "Hello from FreeSMS"
 
 - **View Message History**
   ```bash
-  python run.py cli history [--limit LIMIT] [--status STATUS]
+  python run.py cli history list [--limit LIMIT]
+  python run.py cli history export OUTPUT_FILE [--limit LIMIT]
   ```
 
 - **Schedule Messages**
@@ -123,7 +137,6 @@ python run.py cli send "+1234567890" "Hello from FreeSMS"
   python run.py cli templates list
   python run.py cli templates add NAME CONTENT
   python run.py cli templates delete ID
-  python run.py cli templates use ID RECIPIENT
   ```
 
 - **Configure SMS Services**
@@ -131,20 +144,20 @@ python run.py cli send "+1234567890" "Hello from FreeSMS"
   python run.py cli services list
   python run.py cli services configure NAME CREDENTIALS
   python run.py cli services activate NAME
+  python run.py cli services test [--name SERVICE]
   ```
 
-- **Export/Import Data**
+- **Export/Import Contacts**
   ```bash
-  python run.py cli export contacts FILENAME
-  python run.py cli import contacts FILENAME
-  python run.py cli export history FILENAME [--format {csv,json}]
+  python run.py cli contacts export FILENAME
+  python run.py cli contacts import FILENAME
   ```
 
 ## Command Line Options
 
 ```
 python run.py --help
-usage: main.py [-h] [--minimized] [--debug] [--config CONFIG] [--cli]
+usage: run.py [-h] [--minimized] [--debug] [--config CONFIG] [--cli]
 
 FreeSMS - Free SMS Messaging Application
 
@@ -187,6 +200,8 @@ optional arguments:
 
 ```
 FreeSMS/
+├── .github/          # GitHub configuration (funding)
+├── scripts/          # Development verification scripts
 ├── src/
 │   ├── api/          # SMS service interfaces and implementations
 │   ├── automation/   # Message scheduling and automation
@@ -200,7 +215,12 @@ FreeSMS/
 ├── tests/            # Unit and integration tests
 ├── LICENSE.md        # Commercial Restricted License
 ├── README.md         # This file
+├── pyproject.toml    # Package metadata and tool configuration
 ├── requirements.txt  # Python dependencies
+├── requirements-dev.txt
+├── pytest.ini
+├── mypy.ini
+├── .coveragerc
 └── run.py            # Application entry point
 ```
 
@@ -256,6 +276,8 @@ API credentials are encrypted with Fernet before storage in SQLite. The encrypti
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+**License note:** This project uses the Commercial Restricted License (CRL). Contributions are accepted for non-commercial use under the same license terms. Commercial use requires a separate license — see [LICENSE.md](LICENSE.md).
 
 1. Fork the repository
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)

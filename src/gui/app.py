@@ -271,10 +271,10 @@ class SMSApplication(QMainWindow):
 
     def _build_service_status_text(self) -> str:
         """Build the service status label text (safe to call from worker threads)."""
-        if not self.service_manager.active_service:
+        service = self.service_manager.get_active_service()
+        if not service:
             return "No SMS service configured"
 
-        service = self.service_manager.active_service
         quota = service.get_remaining_quota()
         return f"Service: {service.service_name} | Remaining: {quota}/{service.daily_limit}"
 

@@ -59,9 +59,9 @@ class SMSServiceManager:
                 # Load credentials if available
                 credentials = self.db.get_api_credentials(service_id)
                 if credentials:
-                    # Configure the service with credentials
+                    # Configure the service with credentials (no network validation on reload)
                     if hasattr(service, "configure"):
-                        service.configure(credentials)
+                        service.configure(credentials, validate=False)
 
                 # Add to available services
                 self.services[service_id] = service
@@ -101,6 +101,20 @@ class SMSServiceManager:
         """
         return list(self.services.keys())
 
+    def _get_service_id(self, service: SMSService) -> Optional[str]:
+        """Return the registry key for a loaded service instance."""
+        for service_id, loaded in self.services.items():
+            if loaded is service:
+                return service_id
+        return None
+
+    def get_active_service_id(self) -> Optional[str]:
+        """Return the registry key for the active service (thread-safe)."""
+        with self._lock:
+            if self.active_service is None:
+                return None
+            return self._get_service_id(self.active_service)
+
     def get_configured_services(self) -> List[str]:
         """
         Get names of services that have credentials configured
@@ -123,6 +137,11 @@ class SMSServiceManager:
         if service_name == "twilio":
             return normalize_twilio_credentials(credentials)
         return dict(credentials)
+
+    def get_active_service(self) -> Optional[SMSService]:
+        """Return the active service instance (thread-safe)."""
+        with self._lock:
+            return self.active_service
 
     def configure_service(
         self,
@@ -179,12 +198,14 @@ class SMSServiceManager:
             # Get service
             service = self.services[service_name]
 
-            # Update active service in database
             credentials = self.db.get_api_credentials(service_name)
-            if credentials:
-                self.db.save_api_credentials(service_name, credentials, is_active=True)
+            if not credentials:
+                self.logger.error(
+                    "No credentials configured for service: %s", service_name
+                )
+                return False
 
-            # Set active service
+            self.db.save_api_credentials(service_name, credentials, is_active=True)
             self.active_service = service
             self.logger.info(f"Active SMS service set to: {service_name}")
             return True
@@ -209,28 +230,28 @@ class SMSServiceManager:
             else:
                 service = self.active_service
 
-        # If no service available, return error
-        if not service:
-            self.logger.error("No SMS service available")
-            return SMSResponse(success=False, error="No SMS service configured")
+            if not service:
+                self.logger.error("No SMS service available")
+                return SMSResponse(success=False, error="No SMS service configured")
 
-        # Enforce local daily send limit
-        try:
-            daily_limit = int(service.daily_limit)
-        except (TypeError, ValueError):
-            daily_limit = 0
+            service_id = self._get_service_id(service) or service.service_name
 
-        if daily_limit > 0:
-            sends_today = self.db.count_successful_sends_today(service.service_name)
-            if sends_today >= daily_limit:
-                error_msg = (
-                    f"Daily send limit reached for {service.service_name} "
-                    f"({sends_today}/{service.daily_limit})"
-                )
-                self.logger.warning(error_msg)
-                return SMSResponse(success=False, error=error_msg)
+            try:
+                daily_limit = int(service.daily_limit)
+            except (TypeError, ValueError):
+                daily_limit = 0
 
-        # Send the message
+            if daily_limit > 0:
+                sends_today = self.db.count_successful_sends_today(service_id)
+                if sends_today >= daily_limit:
+                    error_msg = (
+                        f"Daily send limit reached for {service.service_name} "
+                        f"({sends_today}/{service.daily_limit})"
+                    )
+                    self.logger.warning(error_msg)
+                    return SMSResponse(success=False, error=error_msg)
+
+        # Send outside the lock (network I/O)
         try:
             self.logger.info(f"Sending SMS to {recipient} using {service.service_name}")
             response = service.send_sms(recipient, message)
@@ -240,7 +261,7 @@ class SMSServiceManager:
                 self.db.save_message_history(
                     recipient=recipient,
                     message=message,
-                    service=service.service_name,
+                    service=service_id,
                     status="sent",
                     message_id=response.message_id,
                     details=str(response.details),
@@ -249,7 +270,7 @@ class SMSServiceManager:
                 self.db.save_message_history(
                     recipient=recipient,
                     message=message,
-                    service=service.service_name,
+                    service=service_id,
                     status="failed",
                     details=response.error,
                 )
@@ -260,11 +281,11 @@ class SMSServiceManager:
             self.logger.error(f"Error sending SMS: {e}")
             error_response = SMSResponse(success=False, error=str(e))
 
-            # Log to message history
+            service_id = self._get_service_id(service) or service.service_name
             self.db.save_message_history(
                 recipient=recipient,
                 message=message,
-                service=service.service_name,
+                service=service_id,
                 status="error",
                 details=str(e),
             )
@@ -285,11 +306,11 @@ class SMSServiceManager:
             Dictionary with delivery status details
         """
         # Use specified service or active service
-        service = None
-        if service_name:
-            service = self.get_service_by_name(service_name)
-        else:
-            service = self.active_service
+        with self._lock:
+            if service_name:
+                service = self.get_service_by_name(service_name)
+            else:
+                service = self.active_service
 
         # If no service available, return error
         if not service:

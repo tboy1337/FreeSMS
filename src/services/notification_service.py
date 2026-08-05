@@ -14,6 +14,15 @@ from src.utils.logger import get_logger
 
 logger = get_logger("freesms.notifications")
 
+_PREVIEW_MAX_LEN = 80
+
+
+def _preview_text(text: str, max_len: int = _PREVIEW_MAX_LEN) -> str:
+    """Return a truncated preview safe for logging."""
+    if len(text) <= max_len:
+        return text
+    return f"{text[:max_len]}..."
+
 
 class NotificationService:
     """Cross-platform notification service"""
@@ -50,7 +59,7 @@ class NotificationService:
         elif self.system == "Linux":
             self._send_linux_notification(safe_title, safe_message, icon_path)
         else:
-            logger.info("%s: %s", safe_title, safe_message)
+            logger.info("%s: %s", safe_title, _preview_text(safe_message))
 
     def _send_via_plyer(
         self,
@@ -118,7 +127,7 @@ class NotificationService:
             )
         except (OSError, subprocess.SubprocessError) as exc:
             logger.warning("Windows notification fallback failed: %s", exc)
-            logger.info("%s: %s", title, message)
+            logger.info("%s: %s", title, _preview_text(message))
 
     def _escape_applescript(self, value: str) -> str:
         """Escape a string for safe inclusion in AppleScript."""
@@ -147,7 +156,7 @@ class NotificationService:
             )
         except (OSError, subprocess.SubprocessError) as exc:
             logger.warning("macOS notification fallback failed: %s", exc)
-            logger.info("%s: %s", title, message)
+            logger.info("%s: %s", title, _preview_text(message))
 
     def _send_linux_notification(
         self,
@@ -168,7 +177,7 @@ class NotificationService:
             )
         except (OSError, subprocess.SubprocessError) as exc:
             logger.warning("Linux notification fallback failed: %s", exc)
-            logger.info("%s: %s", title, message)
+            logger.info("%s: %s", title, _preview_text(message))
 
 
 def play_sound(sound_type: str = "notification") -> None:

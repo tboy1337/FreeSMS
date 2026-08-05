@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 # Add project root to path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
@@ -54,13 +56,12 @@ class TestDatabaseComprehensive:
             pass  # Ignore any errors
 
     def test_database_initialization_failure(self):
-        """Test database initialization failure"""
-        # Instead of patching sqlite3.connect directly, we'll use a custom class
-        # that raises an exception on initialization
+        """Test database initialization failure raises DatabaseError"""
+        from src.models.database import DatabaseError
+
         with patch("sqlite3.connect", side_effect=sqlite3.Error("Test error")):
-            db = Database(db_path="/invalid/path/to/db.sqlite")
-            # Should not raise exception but log error
-            assert db.conn is None
+            with pytest.raises(DatabaseError, match="Failed to initialize database"):
+                Database(db_path="/invalid/path/to/db.sqlite")
 
     def test_default_database_path(self):
         """Test default database path creation"""

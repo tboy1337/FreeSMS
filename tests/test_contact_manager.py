@@ -34,6 +34,13 @@ def test_add_contact_invalid_phone(contact_manager):
     assert not contact_manager.add_contact("Alice", "invalid", "US")
 
 
+def test_add_contact_formats_local_number_with_country(contact_manager):
+    """Local numbers are parsed using the country region code."""
+    assert contact_manager.add_contact("Eve", "2025551234", "US")
+    contact = contact_manager.get_all_contacts()[0]
+    assert contact["phone"].startswith("+1")
+
+
 def test_get_contact_missing(contact_manager):
     """Missing contacts return None."""
     assert contact_manager.get_contact(9999) is None

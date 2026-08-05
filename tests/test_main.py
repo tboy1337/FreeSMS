@@ -461,7 +461,7 @@ class TestMainExecution:
         # Verify Qt application setup
         mock_qapp.assert_called_once_with(sys.argv)
         mock_qt_app.setApplicationName.assert_called_once_with("FreeSMS")
-        mock_qt_app.setApplicationVersion.assert_called_once_with("1.0.3")
+        mock_qt_app.setApplicationVersion.assert_called_once_with("1.0.4")
 
         # Verify main window creation and shown (not minimized)
         mock_sms_app.assert_called_once_with(

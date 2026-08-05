@@ -12,9 +12,9 @@ class SMSResponse:
     def __init__(
         self,
         success: bool,
-        message_id: str = None,
-        error: str = None,
-        details: Dict[str, Any] = None,
+        message_id: Optional[str] = None,
+        error: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize a new SMS response

@@ -2,6 +2,7 @@
 Input Validation - Security utilities for validating user input
 """
 
+import datetime
 import html
 import re
 from typing import Any, Optional, Tuple
@@ -119,8 +120,6 @@ class InputValidator:
         date_str: str, expected_format: str = "%Y-%m-%d"
     ) -> Tuple[bool, Optional[str]]:
         """Validate a date string format"""
-        import datetime
-
         if not date_str:
             return False, "Date is required"
 
@@ -135,8 +134,6 @@ class InputValidator:
         time_str: str, expected_format: str = "%H:%M"
     ) -> Tuple[bool, Optional[str]]:
         """Validate a time string format"""
-        import datetime
-
         if not time_str:
             return False, "Time is required"
 

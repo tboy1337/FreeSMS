@@ -29,6 +29,9 @@ from PySide6.QtWidgets import (
 )
 
 from src.security.validation import InputValidator
+from src.utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ScheduleTab(QWidget):
@@ -100,7 +103,6 @@ class ScheduleTab(QWidget):
         self.schedule_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
         )
-        self.schedule_table.doubleClicked.connect(self._on_schedule_selected)
 
         left_layout.addWidget(self.schedule_table)
         splitter.addWidget(left_widget)
@@ -218,6 +220,7 @@ class ScheduleTab(QWidget):
             for service in services:
                 self.service_combo.addItem(service)
         except Exception:
+            logger.debug("Could not load SMS services for schedule tab", exc_info=True)
             self.service_combo.clear()
             self.service_combo.addItem("Default")
 
@@ -235,6 +238,7 @@ class ScheduleTab(QWidget):
                 self.template_combo.addItem(name)
                 self.templates[name] = template["content"]
         except Exception:
+            logger.debug("Could not load templates for schedule tab", exc_info=True)
             self.template_combo.clear()
             self.template_combo.addItem("-- No Templates Available --")
             self.templates = {}
@@ -318,15 +322,10 @@ class ScheduleTab(QWidget):
                 )
 
         except Exception as e:
+            logger.exception("Failed to load scheduled messages: %s", e)
             QMessageBox.critical(
                 self, "Error", f"Failed to load scheduled messages: {str(e)}"
             )
-
-    def _on_schedule_selected(self, index):
-        """Handle schedule selection via double-click"""
-        QMessageBox.information(
-            self, "Edit Schedule", "Schedule editing will be implemented soon."
-        )
 
     def _on_save_schedule(self):
         """Save or update a scheduled message"""
@@ -396,6 +395,7 @@ class ScheduleTab(QWidget):
                 QMessageBox.critical(self, "Error", "Failed to schedule message")
 
         except Exception as e:
+            logger.exception("Failed to schedule message: %s", e)
             QMessageBox.critical(self, "Error", f"Failed to schedule message: {str(e)}")
 
     def _clear_form(self):

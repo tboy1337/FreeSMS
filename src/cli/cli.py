@@ -298,21 +298,19 @@ class SMSCommandLineInterface:
                     f"Warning: Large interval ({interval} months) for monthly recurrence."
                 )
 
-        # Add scheduled message
+        # Add scheduled message via scheduler
         try:
-            # Prepare recurrence data if needed
             recurrence_data = None
             if recurring and interval:
                 recurrence_data = {"days_interval": interval}
 
-            message_id = self.db.save_scheduled_message(
+            message_id = self.scheduler.schedule_message(
                 recipient=recipient,
                 message=message,
-                scheduled_time=scheduled_time,
-                service=service,
-                recurring=recurring,
-                recurring_interval=None,
+                schedule_time=dt,
+                recurrence=recurring,
                 recurrence_data=recurrence_data,
+                service=service,
             )
 
             if message_id:
@@ -688,60 +686,17 @@ class SMSCommandLineInterface:
             return False
 
         try:
-            imported = 0
-            skipped = 0
-            errors = 0
+            with open(input_file, "r", encoding="utf-8") as csvfile:
+                csv_data = csvfile.read()
 
-            with open(input_file, "r", newline="", encoding="utf-8") as csvfile:
-                reader = csv.DictReader(csvfile)
-
-                # Validate required fields
-                if not reader.fieldnames or not all(
-                    f in reader.fieldnames for f in ["name", "phone"]
-                ):
-                    print("Error: CSV file must have 'name' and 'phone' columns")
-                    return False
-
-                # Process each row
-                for row in reader:
-                    name = row.get("name", "").strip()
-                    phone = row.get("phone", "").strip()
-                    country = row.get("country", "").strip()
-                    notes = row.get("notes", "").strip()
-
-                    # Basic validation
-                    if not name or not phone:
-                        print(
-                            f"Warning: Skipping row with missing name or phone: {row}"
-                        )
-                        skipped += 1
-                        continue
-
-                    # Validate phone number
-                    valid, error = self.validator.validate_phone_input(phone)
-                    if not valid:
-                        print(
-                            f"Warning: Skipping invalid phone number '{phone}' for '{name}': {error}"
-                        )
-                        skipped += 1
-                        continue
-
-                    # Add contact
-                    try:
-                        result = self.db.save_contact(name, phone, country, notes)
-                        if result:
-                            imported += 1
-                        else:
-                            print(f"Error saving contact: {name}, {phone}")
-                            errors += 1
-                    except Exception as e:
-                        print(f"Error saving contact '{name}': {e}")
-                        errors += 1
-
-            # Print summary
-            print(
-                f"Import complete: {imported} imported, {skipped} skipped, {errors} errors"
+            imported, import_errors = self.contact_manager.import_contacts_from_csv(
+                csv_data
             )
+
+            for error in import_errors:
+                print(f"Warning: {error}")
+
+            print(f"Import complete: {imported} imported, {len(import_errors)} errors")
             return imported > 0
 
         except Exception as e:
@@ -837,8 +792,8 @@ class SMSCommandLineInterface:
             return False
 
 
-def parse_args():
-    """Parse command line arguments"""
+def build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser."""
     parser = argparse.ArgumentParser(description="FreeSMS Command Line Interface")
     subparsers = parser.add_subparsers(dest="command", help="Command to execute")
 
@@ -1010,12 +965,23 @@ def parse_args():
         "--name", help="Service name (default: active service)"
     )
 
-    return parser.parse_args()
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Parse command line arguments"""
+    parser = build_parser()
+    return parser.parse_args(argv)
 
 
 def main() -> int:
     """Main entry point for the CLI application"""
-    args = parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
+    if args.command is None:
+        parser.print_help()
+        return 0
+
     cli = SMSCommandLineInterface()
     exit_code = 0
 
@@ -1095,9 +1061,8 @@ def main() -> int:
             else:
                 cli.list_services()
 
-        else:
-            parse_args(["--help"])
     except Exception as exc:
+        cli.logger.exception("CLI error: %s", exc)
         print(f"Error: {exc}")
         exit_code = 1
     finally:

@@ -462,12 +462,11 @@ class TestSMSServiceManagerImportErrors:
         with patch("importlib.import_module", return_value=mock_module):
             manager = SMSServiceManager(db)
 
-        # Manually set a service as active without credentials
+        # Should fail without credentials
         result = manager.set_active_service("twilio")
 
-        # Should still return True and set active service
-        assert result
-        assert manager.active_service == mock_service
+        assert not result
+        assert manager.active_service is None
 
         # save_api_credentials should not be called without credentials
         db.save_api_credentials.assert_not_called()

@@ -42,5 +42,10 @@ def mock_keyring() -> None:
 
     import keyring
 
+    original_get = keyring.get_password
+    original_set = keyring.set_password
     keyring.get_password = get_password
     keyring.set_password = set_password
+    yield
+    keyring.get_password = original_get
+    keyring.set_password = original_set
