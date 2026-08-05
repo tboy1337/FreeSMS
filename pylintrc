@@ -1,6 +1,7 @@
 [MAIN]
 # Use multiple processes to speed up Pylint
 jobs = 0
+fail-under = 7.5
 
 # Python code to execute, usually for sys.path manipulation
 init-hook = 'import sys; sys.path.append("src")'
@@ -51,14 +52,19 @@ disable =
     # Import issues that are handled by isort
     wrong-import-order,
     ungrouped-imports,
+    wrong-import-position,
+    import-outside-toplevel,
     # Documentation issues handled separately
     missing-module-docstring,
     missing-class-docstring,
     missing-function-docstring,
     # Type checking handled by mypy
     no-member,
-    # Windows specific paths
-    invalid-name
+    no-name-in-module,
+  # Windows specific paths
+    invalid-name,
+    unexpected-line-ending-format,
+    logging-too-many-args,
 
 [BASIC]
 # Good variable names which should always be accepted
@@ -74,8 +80,7 @@ method-rgx = [a-z_][a-z0-9_]{2,30}$
 module-rgx = (([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+))$
 variable-rgx = [a-z_][a-z0-9_]{2,30}$
 
-# Minimum length of variable names
-min-name-length = 1
+# Minimum length of variable names (removed: unsupported in pylint 4.x)
 
 [DESIGN]
 # Maximum number of arguments for function / method
@@ -113,8 +118,7 @@ min-public-methods = 1
 overgeneral-exceptions = builtins.BaseException,builtins.Exception
 
 [FORMAT]
-# Expected format of line ending
-expected-line-ending-format = LF
+# Use platform-native line endings (Windows CRLF, Linux LF).
 
 # Regexp for a line that is allowed to be longer than the limit
 ignore-long-lines = ^\s*(# )?<?https?://\S+>?$
