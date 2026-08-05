@@ -42,6 +42,13 @@ class SettingsTab(QWidget):
         super().__init__()
         self.app = app
 
+        # Service credential widgets (created when a service is selected)
+        self.twilio_sid_entry = None
+        self.twilio_token_entry = None
+        self.twilio_phone_entry = None
+        self.textbelt_key_entry = None
+        self.use_free_tier_check = None
+
         self.status_message.connect(self.app.set_status)
         self.dialog_info.connect(
             lambda title, message: QMessageBox.information(self, title, message)
@@ -184,7 +191,7 @@ class SettingsTab(QWidget):
             else:
                 self.active_service_label.setText("None")
                 self.quota_label.setText("N/A")
-        except Exception:
+        except (OSError, RuntimeError, AttributeError, KeyError, TypeError, ValueError):
             logger.debug("Could not load service status in settings", exc_info=True)
             self.active_service_label.setText("None")
             self.quota_label.setText("N/A")
@@ -202,8 +209,7 @@ class SettingsTab(QWidget):
         """Handle service selection"""
         # Clear service details frame
         for i in reversed(range(self.service_details_layout.count())):
-            child = self.service_details_layout.itemAt(i).widget()
-            if child:
+            if child := self.service_details_layout.itemAt(i).widget():
                 child.setParent(None)
 
         # Create form for the selected service
@@ -256,7 +262,8 @@ class SettingsTab(QWidget):
             "1. Sign up at https://www.twilio.com/try-twilio\n"
             "2. Get your Account SID and Auth Token from the Twilio Console\n"
             "3. Get a Twilio phone number from the Phone Numbers section\n\n"
-            "Note: Twilio's free trial has limited credits and requires verifying recipient phone numbers."
+            "Note: Twilio's free trial has limited credits and requires "
+            "verifying recipient phone numbers."
         )
         form_layout.addRow("Help:", help_text)
 
@@ -384,22 +391,19 @@ class SettingsTab(QWidget):
     def _test_twilio_thread(self, credentials):
         """Test Twilio connection in a background thread"""
         try:
-            service = self.app.service_manager.get_service_by_name("twilio")
-            if not service:
+            if not (service := self.app.service_manager.get_service_by_name("twilio")):
                 self.dialog_error.emit("Error", "Twilio service not available")
                 self.status_message.emit("Ready")
                 return
 
-            success = service.configure(credentials, validate=True)
-
-            if success:
+            if service.configure(credentials, validate=True):
                 self.dialog_info.emit("Success", "Twilio connection successful")
             else:
                 self.dialog_error.emit("Error", "Failed to connect to Twilio")
 
-        except Exception as e:
-            logger.exception("Error testing Twilio: %s", e)
-            self.dialog_error.emit("Error", f"Error testing Twilio: {str(e)}")
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
+            logger.exception("Error testing Twilio: %s", exc)
+            self.dialog_error.emit("Error", f"Error testing Twilio: {exc!s}")
 
         self.status_message.emit("Ready")
 
@@ -444,17 +448,15 @@ class SettingsTab(QWidget):
                 self._load_current_settings()
             else:
                 QMessageBox.critical(self, "Error", "Failed to save Twilio credentials")
-        except Exception as e:
-            logger.exception("Failed to save Twilio credentials: %s", e)
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
+            logger.exception("Failed to save Twilio credentials: %s", exc)
             QMessageBox.critical(
-                self, "Error", f"Failed to save Twilio credentials: {str(e)}"
+                self, "Error", f"Failed to save Twilio credentials: {exc!s}"
             )
 
     def _on_test_textbelt(self):
         """Test TextBelt connection"""
-        api_key = self.textbelt_key_entry.text().strip()
-
-        if not api_key:
+        if not (api_key := self.textbelt_key_entry.text().strip()):
             QMessageBox.critical(self, "Error", "API Key is required")
             return
 
@@ -471,15 +473,14 @@ class SettingsTab(QWidget):
     def _test_textbelt_thread(self, credentials):
         """Test TextBelt connection in a background thread"""
         try:
-            service = self.app.service_manager.get_service_by_name("textbelt")
-            if not service:
+            if not (
+                service := self.app.service_manager.get_service_by_name("textbelt")
+            ):
                 self.dialog_error.emit("Error", "TextBelt service not available")
                 self.status_message.emit("Ready")
                 return
 
-            success = service.configure(credentials, validate=True)
-
-            if success:
+            if service.configure(credentials, validate=True):
                 quota = service.get_remaining_quota()
                 self.dialog_info.emit(
                     "Success",
@@ -488,17 +489,15 @@ class SettingsTab(QWidget):
             else:
                 self.dialog_error.emit("Error", "Failed to connect to TextBelt")
 
-        except Exception as e:
-            logger.exception("Error testing TextBelt: %s", e)
-            self.dialog_error.emit("Error", f"Error testing TextBelt: {str(e)}")
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
+            logger.exception("Error testing TextBelt: %s", exc)
+            self.dialog_error.emit("Error", f"Error testing TextBelt: {exc!s}")
 
         self.status_message.emit("Ready")
 
     def _on_save_textbelt(self):
         """Save TextBelt credentials"""
-        api_key = self.textbelt_key_entry.text().strip()
-
-        if not api_key:
+        if not (api_key := self.textbelt_key_entry.text().strip()):
             QMessageBox.critical(self, "Error", "API Key is required")
             return
 
@@ -523,17 +522,15 @@ class SettingsTab(QWidget):
                 QMessageBox.critical(
                     self, "Error", "Failed to save TextBelt credentials"
                 )
-        except Exception as e:
-            logger.exception("Failed to save TextBelt credentials: %s", e)
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
+            logger.exception("Failed to save TextBelt credentials: %s", exc)
             QMessageBox.critical(
-                self, "Error", f"Failed to save TextBelt credentials: {str(e)}"
+                self, "Error", f"Failed to save TextBelt credentials: {exc!s}"
             )
 
     def _on_set_active_service(self):
         """Set the active SMS service"""
-        service_name = self.service_combo.currentText()
-
-        if not service_name:
+        if not (service_name := self.service_combo.currentText()):
             QMessageBox.information(
                 self, "Information", "Please select a service to set as active"
             )
@@ -551,12 +548,15 @@ class SettingsTab(QWidget):
                 QMessageBox.critical(
                     self,
                     "Error",
-                    f"Failed to set {service_name} as active service. Is it configured?",
+                    (
+                        f"Failed to set {service_name} as active service. "
+                        "Is it configured?"
+                    ),
                 )
-        except Exception as e:
-            logger.exception("Failed to set active service: %s", e)
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
+            logger.exception("Failed to set active service: %s", exc)
             QMessageBox.critical(
-                self, "Error", f"Failed to set active service: {str(e)}"
+                self, "Error", f"Failed to set active service: {exc!s}"
             )
 
     def _on_save_general_settings(self):

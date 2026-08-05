@@ -6,19 +6,24 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
     QPushButton,
-    QSplitter,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
+from src.gui.ui_helpers import (
+    add_cancel_button_row,
+    create_horizontal_splitter,
+    create_split_left_panel,
+    create_tab_layout,
+    update_sms_char_count,
+)
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -30,39 +35,24 @@ class TemplatesTab(QWidget):
     def __init__(self, app):
         """Initialize the templates tab"""
         super().__init__()
-        self.app = app
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
-
+        self.editing_template_id: int | None = None
+        self.templates: dict[str, dict[str, object]] = {}
+        create_tab_layout(self, app)
         self._create_components()
         self.load_templates()
 
     def _create_components(self):
         """Create tab components"""
         # Split into left and right panels
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.layout().addWidget(splitter)
+        splitter = create_horizontal_splitter(self)
 
         # Left panel for template list
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-
-        # Header
-        header_frame = QWidget()
-        header_layout = QHBoxLayout(header_frame)
-
-        title_label = QLabel("Templates")
-        title_label.setProperty("class", "title")
-        header_layout.addWidget(title_label)
+        left_widget, left_layout, header_layout = create_split_left_panel("Templates")
 
         new_button = QPushButton("New Template")
         new_button.clicked.connect(self._on_new_template)
         header_layout.addStretch()
         header_layout.addWidget(new_button)
-
-        left_layout.addWidget(header_frame)
 
         # Template list
         self.template_list = QListWidget()
@@ -105,19 +95,11 @@ class TemplatesTab(QWidget):
         right_layout.addWidget(form_group)
 
         # Buttons
-        button_frame = QWidget()
-        button_layout = QHBoxLayout(button_frame)
-        button_layout.addStretch()
-
-        cancel_button = QPushButton("Cancel")
-        cancel_button.clicked.connect(self._clear_editor)
-        button_layout.addWidget(cancel_button)
+        button_layout = add_cancel_button_row(right_layout, self._clear_editor)
 
         save_button = QPushButton("Save Template")
         save_button.clicked.connect(self._on_save_template)
         button_layout.addWidget(save_button)
-
-        right_layout.addWidget(button_frame)
         right_layout.addStretch()
 
         splitter.addWidget(right_widget)
@@ -127,22 +109,14 @@ class TemplatesTab(QWidget):
 
     def _update_char_count(self):
         """Update the character count display"""
-        text = self.content_text.toPlainText()
-        count = len(text)
-
-        parts = count // 160 + (1 if count % 160 > 0 else 0)
-
-        if parts > 1:
-            self.char_count_label.setText(f"{count} characters ({parts} messages)")
-        else:
-            self.char_count_label.setText(f"{count}/160 characters")
+        update_sms_char_count(self.char_count_label, self.content_text.toPlainText())
 
     def load_templates(self):
         """Load templates from the database"""
         try:
             self.template_list.clear()
 
-            templates = self.app.db.get_templates()
+            templates = self.app.db.get_message_templates()
 
             self.templates = {}
 
@@ -159,14 +133,13 @@ class TemplatesTab(QWidget):
                     "content": template["content"],
                 }
 
-        except Exception as e:
-            logger.exception("Failed to load templates: %s", e)
-            QMessageBox.critical(self, "Error", f"Failed to load templates: {str(e)}")
+        except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+            logger.exception("Failed to load templates: %s", exc)
+            QMessageBox.critical(self, "Error", f"Failed to load templates: {exc!s}")
 
     def _on_template_selected(self):
         """Handle template selection"""
-        current_item = self.template_list.currentItem()
-        if not current_item:
+        if not (current_item := self.template_list.currentItem()):
             return
 
         name = current_item.text()
@@ -207,7 +180,7 @@ class TemplatesTab(QWidget):
             return
 
         # Check for duplicate name when creating new template
-        editing_id = getattr(self, "editing_template_id", None)
+        editing_id = self.editing_template_id
         if editing_id is None and name in self.templates:
             QMessageBox.critical(
                 self, "Error", f"A template with the name '{name}' already exists"
@@ -216,7 +189,9 @@ class TemplatesTab(QWidget):
             return
 
         try:
-            success = self.app.db.save_template(name, content, template_id=editing_id)
+            success = self.app.db.save_message_template(
+                name, content, template_id=editing_id
+            )
 
             if success:
                 QMessageBox.information(
@@ -227,9 +202,9 @@ class TemplatesTab(QWidget):
             else:
                 QMessageBox.critical(self, "Error", f"Failed to save template '{name}'")
 
-        except Exception as e:
-            logger.exception("Failed to save template: %s", e)
-            QMessageBox.critical(self, "Error", f"Failed to save template: {str(e)}")
+        except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+            logger.exception("Failed to save template: %s", exc)
+            QMessageBox.critical(self, "Error", f"Failed to save template: {exc!s}")
 
     def _clear_editor(self):
         """Clear the template editor"""
@@ -239,7 +214,6 @@ class TemplatesTab(QWidget):
 
         self.editor_header.setText("New Template")
 
-        if hasattr(self, "editing_template_id"):
-            delattr(self, "editing_template_id")
+        self.editing_template_id = None
 
         self.name_entry.setFocus()

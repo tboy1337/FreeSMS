@@ -1,7 +1,7 @@
 [MAIN]
 # Use multiple processes to speed up Pylint
 jobs = 0
-fail-under = 7.5
+fail-under = 10
 
 # Python code to execute, usually for sys.path manipulation
 init-hook = 'import sys; sys.path.append("src")'

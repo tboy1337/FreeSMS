@@ -112,7 +112,10 @@ VERIFY_STEPS: tuple[VerifyStep, ...] = (
     VerifyStep(
         "bandit", [sys.executable, "-m", "bandit", "-r", "src", "-c", "pyproject.toml"]
     ),
-    VerifyStep("pylint", [sys.executable, "-m", "pylint", "src"]),
+    VerifyStep(
+        "pylint",
+        [sys.executable, "-m", "pylint", "src", "--fail-under=10"],
+    ),
     VerifyStep("mypy", [sys.executable, "-m", "mypy", "src"]),
     VerifyStep("pytest", [sys.executable, "-m", "pytest", "tests/"]),
     VerifyStep("cli smoke", [sys.executable, "-m", "src.cli.cli", "--help"]),

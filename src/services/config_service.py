@@ -6,7 +6,7 @@ Manages application settings with JSON persistence
 import json
 from copy import deepcopy
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from src.utils.paths import get_app_dir, get_config_path
 
@@ -14,7 +14,7 @@ from src.utils.paths import get_app_dir, get_config_path
 class ConfigService:
     """Service for managing application configuration"""
 
-    def __init__(self, app_name: str = "freesms", config_path: Optional[str] = None):
+    def __init__(self, app_name: str = "freesms", config_path: str | None = None):
         """Initialize the configuration service"""
         self.app_name = app_name
         if config_path:
@@ -24,7 +24,7 @@ class ConfigService:
             self.config_dir = get_app_dir()
             self.config_file = get_config_path()
 
-        self.settings: Dict[str, Any] = {}
+        self.settings: dict[str, Any] = {}
 
         # Create config directory if it doesn't exist
         self.config_dir.mkdir(parents=True, exist_ok=True)
@@ -54,7 +54,7 @@ class ConfigService:
         except OSError:
             return False
 
-    def _get_default_settings(self) -> Dict[str, Any]:
+    def _get_default_settings(self) -> dict[str, Any]:
         """Get default application settings"""
         return {
             "general": {
@@ -115,7 +115,7 @@ class ConfigService:
             True if successful, False otherwise
         """
         keys = key.split(".")
-        setting: Dict[str, Any] = self.settings
+        setting: dict[str, Any] = self.settings
 
         for part in keys[:-1]:
             if part not in setting:
@@ -125,7 +125,7 @@ class ConfigService:
         setting[keys[-1]] = value
         return self._save_config()
 
-    def reset(self, section: Optional[str] = None) -> bool:
+    def reset(self, section: str | None = None) -> bool:
         """
         Reset settings to default
 
@@ -146,7 +146,7 @@ class ConfigService:
 
         return self._save_config()
 
-    def get_all(self) -> Dict[str, Any]:
+    def get_all(self) -> dict[str, Any]:
         """Get all settings."""
         return deepcopy(self.settings)
 

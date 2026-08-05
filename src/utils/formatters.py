@@ -4,14 +4,18 @@ Formatting utilities for SMS application
 
 import re
 from datetime import datetime
-from typing import Optional, Tuple
 
 import phonenumbers
+
+_GSM_PATTERN = (
+    r"^[@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!\"\#¤%&\'()*+,\-./:;<=>?"
+    r"¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà\s]*$"
+)
 
 
 def format_phone_number(
     phone: str, country_code: str = "US"
-) -> Tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """
     Format a phone number to E.164 format
 
@@ -46,7 +50,7 @@ def format_phone_number(
         return False, None
 
 
-def get_message_parts(message: str) -> Tuple[int, int]:
+def get_message_parts(message: str) -> tuple[int, int]:
     """
     Calculate how many SMS parts a message will require
 
@@ -62,9 +66,7 @@ def get_message_parts(message: str) -> Tuple[int, int]:
     # Unicode messages are limited to 70 chars per SMS
 
     # Check if message contains characters outside GSM-7 charset
-    gsm_pattern = r"^[@£$¥èéùìòÇØøÅåΔ_ΦΓΛΩΠΨΣΘΞÆæßÉ!\"\#¤%&\'()*+,\-./:;<=>?¡ABCDEFGHIJKLMNOPQRSTUVWXYZÄÖÑÜ§¿abcdefghijklmnopqrstuvwxyzäöñüà\s]*$"
-
-    if re.match(gsm_pattern, message):
+    if re.match(_GSM_PATTERN, message):
         # GSM-7 encoding
         chars_per_sms = 160
         chars_per_concat_sms = 153  # 160 - 7 bytes used for UDH header

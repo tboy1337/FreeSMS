@@ -3,7 +3,7 @@ Credential encryption utilities using Fernet and OS keyring.
 """
 
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 
 import keyring
 from cryptography.fernet import Fernet, InvalidToken
@@ -24,15 +24,14 @@ class CredentialEncryptionError(Exception):
 def _get_or_create_key() -> bytes:
     """Load encryption key from keyring or create and store a new one."""
     try:
-        stored = keyring.get_password(KEYRING_SERVICE, KEYRING_KEY_NAME)
-        if stored:
+        if stored := keyring.get_password(KEYRING_SERVICE, KEYRING_KEY_NAME):
             return stored.encode("utf-8")
 
         key = Fernet.generate_key()
         keyring.set_password(KEYRING_SERVICE, KEYRING_KEY_NAME, key.decode("utf-8"))
         logger.info("Generated new encryption key in keyring")
         return key
-    except Exception as exc:
+    except (keyring.errors.KeyringError, OSError) as exc:
         logger.error("Keyring access failed: %s", exc)
         raise CredentialEncryptionError(
             "Unable to access the OS credential store for encryption. "
@@ -45,7 +44,7 @@ def _get_fernet() -> Fernet:
     return Fernet(_get_or_create_key())
 
 
-def encrypt_credentials(credentials: Dict[str, Any]) -> str:
+def encrypt_credentials(credentials: dict[str, Any]) -> str:
     """
     Encrypt a credentials dictionary for database storage.
 
@@ -56,7 +55,7 @@ def encrypt_credentials(credentials: Dict[str, Any]) -> str:
     return f"{ENCRYPTED_PREFIX}{token}"
 
 
-def decrypt_credentials(stored_value: str) -> Optional[Dict[str, Any]]:
+def decrypt_credentials(stored_value: str) -> dict[str, Any] | None:
     """
     Decrypt stored credentials.
 
@@ -69,9 +68,9 @@ def decrypt_credentials(stored_value: str) -> Optional[Dict[str, Any]]:
         token = stored_value[len(ENCRYPTED_PREFIX) :]
         try:
             decrypted = _get_fernet().decrypt(token.encode("utf-8"))
-            result: Dict[str, Any] = json.loads(decrypted.decode("utf-8"))
+            result: dict[str, Any] = json.loads(decrypted.decode("utf-8"))
             return result
-        except (InvalidToken, json.JSONDecodeError, ValueError) as exc:
+        except (InvalidToken, json.JSONDecodeError) as exc:
             logger.error("Failed to decrypt credentials: %s", exc)
             return None
 
@@ -89,10 +88,10 @@ def is_legacy_plaintext(stored_value: str) -> bool:
         return False
 
 
-def parse_legacy_credentials(stored_value: str) -> Optional[Dict[str, Any]]:
+def parse_legacy_credentials(stored_value: str) -> dict[str, Any] | None:
     """Parse legacy plaintext JSON credentials."""
     try:
-        result: Dict[str, Any] = json.loads(stored_value)
+        result: dict[str, Any] = json.loads(stored_value)
         return result
     except json.JSONDecodeError:
         return None

@@ -4,7 +4,7 @@ SMS service manager module
 
 import importlib
 import threading
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from src.api.sms_service import SMSResponse, SMSService
 from src.api.twilio_service import normalize_twilio_credentials
@@ -57,30 +57,26 @@ class SMSServiceManager:
                 service = service_class()
 
                 # Load credentials if available
-                credentials = self.db.get_api_credentials(service_id)
-                if credentials:
-                    # Configure the service with credentials (no network validation on reload)
+                if credentials := self.db.get_api_credentials(service_id):
+                    # Configure without network validation on reload
                     if hasattr(service, "configure"):
                         service.configure(credentials, validate=False)
 
                 # Add to available services
                 self.services[service_id] = service
 
-            except (ImportError, AttributeError) as e:
-                self.logger.warning(f"Failed to load service {service_id}: {e}")
+            except (ImportError, AttributeError) as exc:
+                self.logger.warning("Failed to load service %s: %s", service_id, exc)
 
     def _set_active_service(self):
         """Set the active SMS service"""
-        active_services = self.db.get_active_services()
-
-        if active_services:
+        if active_services := self.db.get_active_services():
             # Use the first active service
-            service_id = active_services[0]
-            if service_id in self.services:
+            if (service_id := active_services[0]) in self.services:
                 self.active_service = self.services[service_id]
-                self.logger.info(f"Active SMS service: {service_id}")
+                self.logger.info("Active SMS service: %s", service_id)
 
-    def get_service_by_name(self, service_name: str) -> Optional[SMSService]:
+    def get_service_by_name(self, service_name: str) -> SMSService | None:
         """
         Get a service by name
 
@@ -92,7 +88,7 @@ class SMSServiceManager:
         """
         return self.services.get(service_name)
 
-    def get_available_services(self) -> List[str]:
+    def get_available_services(self) -> list[str]:
         """
         Get names of available services
 
@@ -101,21 +97,21 @@ class SMSServiceManager:
         """
         return list(self.services.keys())
 
-    def _get_service_id(self, service: SMSService) -> Optional[str]:
+    def _get_service_id(self, service: SMSService) -> str | None:
         """Return the registry key for a loaded service instance."""
         for service_id, loaded in self.services.items():
             if loaded is service:
                 return service_id
         return None
 
-    def get_active_service_id(self) -> Optional[str]:
+    def get_active_service_id(self) -> str | None:
         """Return the registry key for the active service (thread-safe)."""
         with self._lock:
             if self.active_service is None:
                 return None
             return self._get_service_id(self.active_service)
 
-    def get_configured_services(self) -> List[str]:
+    def get_configured_services(self) -> list[str]:
         """
         Get names of services that have credentials configured
 
@@ -123,22 +119,21 @@ class SMSServiceManager:
             List of configured service names
         """
         configured_services = []
-        for service_name in self.services.keys():
-            credentials = self.db.get_api_credentials(service_name)
-            if credentials:
+        for service_name in self.services:
+            if self.db.get_api_credentials(service_name):
                 configured_services.append(service_name)
         return configured_services
 
     @staticmethod
     def _normalize_credentials(
-        service_name: str, credentials: Dict[str, str]
-    ) -> Dict[str, str]:
+        service_name: str, credentials: dict[str, str]
+    ) -> dict[str, str]:
         """Normalize service-specific credential keys before save/configure."""
         if service_name == "twilio":
             return normalize_twilio_credentials(credentials)
         return dict(credentials)
 
-    def get_active_service(self) -> Optional[SMSService]:
+    def get_active_service(self) -> SMSService | None:
         """Return the active service instance (thread-safe)."""
         with self._lock:
             return self.active_service
@@ -146,7 +141,7 @@ class SMSServiceManager:
     def configure_service(
         self,
         service_name: str,
-        credentials: Dict[str, str],
+        credentials: dict[str, str],
         *,
         validate: bool = False,
     ) -> bool:
@@ -161,8 +156,7 @@ class SMSServiceManager:
         Returns:
             True if configuration and persistence succeeded
         """
-        service = self.get_service_by_name(service_name)
-        if not service:
+        if not (service := self.get_service_by_name(service_name)):
             self.logger.error("Service not found: %s", service_name)
             return False
 
@@ -192,14 +186,13 @@ class SMSServiceManager:
         """
         with self._lock:
             if service_name not in self.services:
-                self.logger.error(f"Service not found: {service_name}")
+                self.logger.error("Service not found: %s", service_name)
                 return False
 
             # Get service
             service = self.services[service_name]
 
-            credentials = self.db.get_api_credentials(service_name)
-            if not credentials:
+            if not (credentials := self.db.get_api_credentials(service_name)):
                 self.logger.error(
                     "No credentials configured for service: %s", service_name
                 )
@@ -207,11 +200,14 @@ class SMSServiceManager:
 
             self.db.save_api_credentials(service_name, credentials, is_active=True)
             self.active_service = service
-            self.logger.info(f"Active SMS service set to: {service_name}")
+            self.logger.info("Active SMS service set to: %s", service_name)
             return True
 
     def send_sms(
-        self, recipient: str, message: str, service_name: str = None
+        self,
+        recipient: str,
+        message: str,
+        service_name: str | None = None,
     ) -> SMSResponse:
         """
         Send an SMS message
@@ -253,7 +249,9 @@ class SMSServiceManager:
 
         # Send outside the lock (network I/O)
         try:
-            self.logger.info(f"Sending SMS to {recipient} using {service.service_name}")
+            self.logger.info(
+                "Sending SMS to %s using %s", recipient, service.service_name
+            )
             response = service.send_sms(recipient, message)
 
             # Log to message history
@@ -277,9 +275,9 @@ class SMSServiceManager:
 
             return response
 
-        except Exception as e:
-            self.logger.error(f"Error sending SMS: {e}")
-            error_response = SMSResponse(success=False, error=str(e))
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            self.logger.error("Error sending SMS: %s", exc)
+            error_response = SMSResponse(success=False, error=str(exc))
 
             service_id = self._get_service_id(service) or service.service_name
             self.db.save_message_history(
@@ -287,14 +285,28 @@ class SMSServiceManager:
                 message=message,
                 service=service_id,
                 status="error",
-                details=str(e),
+                details=str(exc),
+            )
+
+            return error_response
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.logger.error("Error sending SMS: %s", exc)
+            error_response = SMSResponse(success=False, error=str(exc))
+
+            service_id = self._get_service_id(service) or service.service_name
+            self.db.save_message_history(
+                recipient=recipient,
+                message=message,
+                service=service_id,
+                status="error",
+                details=str(exc),
             )
 
             return error_response
 
     def check_delivery_status(
-        self, message_id: str, service_name: str = None
-    ) -> Dict[str, Any]:
+        self, message_id: str, service_name: str | None = None
+    ) -> dict[str, Any]:
         """
         Check delivery status of a message
 
@@ -319,9 +331,12 @@ class SMSServiceManager:
 
         # Check delivery status
         try:
-            self.logger.info(f"Checking delivery status for message {message_id}")
+            self.logger.info("Checking delivery status for message %s", message_id)
             return service.get_delivery_status(message_id)
 
-        except Exception as e:
-            self.logger.error(f"Error checking delivery status: {e}")
-            return {"status": "error", "error": str(e)}
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            self.logger.error("Error checking delivery status: %s", exc)
+            return {"status": "error", "error": str(exc)}
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.logger.error("Error checking delivery status: %s", exc)
+            return {"status": "error", "error": str(exc)}

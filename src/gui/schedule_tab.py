@@ -2,12 +2,11 @@
 Schedule Tab - UI for scheduling and automating messages
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from PySide6.QtCore import QDate, Qt, QTime
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QCheckBox,
     QComboBox,
     QDateEdit,
     QFormLayout,
@@ -19,7 +18,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSpinBox,
-    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QTextEdit,
@@ -28,23 +26,27 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.gui.ui_helpers import (
+    MessageTemplateMixin,
+    add_cancel_button_row,
+    create_horizontal_splitter,
+    create_split_left_panel,
+    create_tab_layout,
+)
 from src.security.validation import InputValidator
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class ScheduleTab(QWidget):
+class ScheduleTab(QWidget, MessageTemplateMixin):
     """Schedule and automation tab"""
 
     def __init__(self, app):
         """Initialize the schedule tab"""
         super().__init__()
-        self.app = app
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        self.templates: dict[str, str] = {}
+        create_tab_layout(self, app)
 
         self._create_components()
         self.load_scheduled_messages()
@@ -52,27 +54,17 @@ class ScheduleTab(QWidget):
     def _create_components(self):
         """Create tab components"""
         # Create splitter for left and right panels
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.layout().addWidget(splitter)
+        splitter = create_horizontal_splitter(self)
 
         # Left panel for scheduled messages list
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-
-        # Header and controls
-        header_frame = QWidget()
-        header_layout = QHBoxLayout(header_frame)
-
-        title_label = QLabel("Scheduled Messages")
-        title_label.setProperty("class", "title")
-        header_layout.addWidget(title_label)
+        left_widget, left_layout, header_layout = create_split_left_panel(
+            "Scheduled Messages"
+        )
 
         refresh_button = QPushButton("Refresh")
         refresh_button.clicked.connect(self.load_scheduled_messages)
         header_layout.addStretch()
         header_layout.addWidget(refresh_button)
-
-        left_layout.addWidget(header_frame)
 
         # Filter frame
         filter_frame = QWidget()
@@ -191,19 +183,11 @@ class ScheduleTab(QWidget):
         right_layout.addWidget(form_group)
 
         # Buttons
-        button_frame = QWidget()
-        button_layout = QHBoxLayout(button_frame)
-        button_layout.addStretch()
-
-        cancel_button = QPushButton("Cancel")
-        cancel_button.clicked.connect(self._clear_form)
-        button_layout.addWidget(cancel_button)
+        button_layout = add_cancel_button_row(right_layout, self._clear_form)
 
         self.save_button = QPushButton("Schedule")
         self.save_button.clicked.connect(self._on_save_schedule)
         button_layout.addWidget(self.save_button)
-
-        right_layout.addWidget(button_frame)
         right_layout.addStretch()
 
         splitter.addWidget(right_widget)
@@ -219,52 +203,10 @@ class ScheduleTab(QWidget):
             self.service_combo.clear()
             for service in services:
                 self.service_combo.addItem(service)
-        except Exception:
+        except (OSError, RuntimeError, KeyError, TypeError, ValueError):
             logger.debug("Could not load SMS services for schedule tab", exc_info=True)
             self.service_combo.clear()
             self.service_combo.addItem("Default")
-
-    def _load_templates(self):
-        """Load message templates from the database"""
-        try:
-            templates = self.app.db.get_templates()
-
-            self.template_combo.clear()
-            self.template_combo.addItem("-- Select Template --")
-
-            self.templates = {}
-            for template in templates:
-                name = template["name"]
-                self.template_combo.addItem(name)
-                self.templates[name] = template["content"]
-        except Exception:
-            logger.debug("Could not load templates for schedule tab", exc_info=True)
-            self.template_combo.clear()
-            self.template_combo.addItem("-- No Templates Available --")
-            self.templates = {}
-
-    def _on_template_selected(self, template_name):
-        """Handle template selection"""
-        if (
-            template_name
-            and template_name != "-- Select Template --"
-            and template_name in self.templates
-        ):
-            content = self.templates[template_name]
-            self.message_text.setPlainText(content)
-            self._update_char_count()
-
-    def _update_char_count(self):
-        """Update the character count display"""
-        text = self.message_text.toPlainText()
-        count = len(text)
-
-        parts = count // 160 + (1 if count % 160 > 0 else 0)
-
-        if parts > 1:
-            self.char_count_label.setText(f"{count} characters ({parts} messages)")
-        else:
-            self.char_count_label.setText(f"{count}/160 characters")
 
     def _on_recurrence_changed(self, recurrence):
         """Handle recurrence selection change"""
@@ -282,9 +224,7 @@ class ScheduleTab(QWidget):
     def load_scheduled_messages(self):
         """Load scheduled messages from the database"""
         try:
-            status_filter = self.status_combo.currentText().lower()
-
-            if status_filter == "all":
+            if (status_filter := self.status_combo.currentText().lower()) == "all":
                 messages = self.app.scheduler.get_scheduled_messages()
             else:
                 messages = self.app.scheduler.get_scheduled_messages(
@@ -295,8 +235,7 @@ class ScheduleTab(QWidget):
 
             for row, message in enumerate(messages):
                 # Format schedule time
-                schedule_time = message["scheduled_time"]
-                if schedule_time:
+                if schedule_time := message["scheduled_time"]:
                     try:
                         dt = datetime.strptime(schedule_time, "%Y-%m-%d %H:%M:%S")
                         schedule_time = dt.strftime("%Y-%m-%d %H:%M")
@@ -321,10 +260,10 @@ class ScheduleTab(QWidget):
                     row, 3, QTableWidgetItem(message["status"].capitalize())
                 )
 
-        except Exception as e:
-            logger.exception("Failed to load scheduled messages: %s", e)
+        except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+            logger.exception("Failed to load scheduled messages: %s", exc)
             QMessageBox.critical(
-                self, "Error", f"Failed to load scheduled messages: {str(e)}"
+                self, "Error", f"Failed to load scheduled messages: {exc!s}"
             )
 
     def _on_save_schedule(self):
@@ -353,9 +292,7 @@ class ScheduleTab(QWidget):
         # Get schedule time
         date = self.date_edit.date().toPython()
         time = self.time_edit.time().toPython()
-        schedule_time = datetime.combine(date, time)
-
-        if schedule_time <= datetime.now():
+        if (schedule_time := datetime.combine(date, time)) <= datetime.now():
             QMessageBox.critical(self, "Error", "Schedule time must be in the future")
             return
 
@@ -371,8 +308,7 @@ class ScheduleTab(QWidget):
             recurrence_data = None
 
         # Get service
-        service = self.service_combo.currentText()
-        if service == "Default":
+        if (service := self.service_combo.currentText()) == "Default":
             service = None
 
         try:
@@ -394,9 +330,9 @@ class ScheduleTab(QWidget):
             else:
                 QMessageBox.critical(self, "Error", "Failed to schedule message")
 
-        except Exception as e:
-            logger.exception("Failed to schedule message: %s", e)
-            QMessageBox.critical(self, "Error", f"Failed to schedule message: {str(e)}")
+        except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+            logger.exception("Failed to schedule message: %s", exc)
+            QMessageBox.critical(self, "Error", f"Failed to schedule message: {exc!s}")
 
     def _clear_form(self):
         """Clear the schedule form"""

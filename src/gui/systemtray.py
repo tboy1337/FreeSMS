@@ -66,8 +66,8 @@ class SystemTrayIcon(QObject):
             # Show the tray icon
             self.tray_icon.show()
 
-        except Exception as e:
-            logger.error("Failed to initialize system tray: %s", e)
+        except (OSError, RuntimeError, AttributeError) as exc:
+            logger.error("Failed to initialize system tray: %s", exc)
 
     def _load_icon(self):
         """Load icon for the tray"""
@@ -107,12 +107,12 @@ class SystemTrayIcon(QObject):
 
         # Show action
         show_action = QAction("Show", self.app)
-        show_action.triggered.connect(lambda: self.show_requested.emit())
+        show_action.triggered.connect(self.show_requested.emit)
         menu.addAction(show_action)
 
         # Send Message action
         message_action = QAction("Send Message", self.app)
-        message_action.triggered.connect(lambda: self.new_message_requested.emit())
+        message_action.triggered.connect(self.new_message_requested.emit)
         menu.addAction(message_action)
 
         # Separator
@@ -120,7 +120,7 @@ class SystemTrayIcon(QObject):
 
         # Exit action
         exit_action = QAction("Exit", self.app)
-        exit_action.triggered.connect(lambda: self.exit_requested.emit())
+        exit_action.triggered.connect(self.exit_requested.emit)
         menu.addAction(exit_action)
 
         # Set the menu

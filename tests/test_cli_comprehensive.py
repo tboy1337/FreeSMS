@@ -34,11 +34,11 @@ class TestSMSCommandLineInterface:
         """Clean up test environment after each test"""
         sys.argv = self.original_argv
 
-    @patch("src.cli.cli.Database")
-    @patch("src.cli.cli.SMSServiceManager")
-    @patch("src.cli.cli.ContactManager")
-    @patch("src.cli.cli.MessageScheduler")
-    @patch("src.cli.cli.InputValidator")
+    @patch("src.services.app_services.Database")
+    @patch("src.services.app_services.SMSServiceManager")
+    @patch("src.services.app_services.ContactManager")
+    @patch("src.services.app_services.MessageScheduler")
+    @patch("src.services.app_services.InputValidator")
     @patch("src.cli.cli.setup_logger")
     def test_initialization(
         self,
@@ -312,13 +312,13 @@ class TestCLITemplatesFeatures:
                 "created_at": "2024-01-02 11:00:00",
             },
         ]
-        cli.db.get_templates.return_value = mock_templates
+        cli.db.get_message_templates.return_value = mock_templates
 
         # Test listing templates
         result = cli.list_templates()
 
         # Verify templates were retrieved
-        cli.db.get_templates.assert_called_once()
+        cli.db.get_message_templates.assert_called_once()
 
         # Verify print was called (templates were displayed)
         assert mock_print.called
@@ -332,11 +332,11 @@ class TestCLITemplatesFeatures:
         cli.db = MagicMock()
         cli.logger = MagicMock()
 
-        cli.db.get_templates.return_value = []
+        cli.db.get_message_templates.return_value = []
 
         cli.list_templates()
 
-        cli.db.get_templates.assert_called_once()
+        cli.db.get_message_templates.assert_called_once()
         mock_print.assert_called_with("No message templates found.")
 
     @patch("src.cli.cli.SMSCommandLineInterface._initialize_services")
@@ -347,11 +347,11 @@ class TestCLITemplatesFeatures:
         cli.db = MagicMock()
         cli.logger = MagicMock()
 
-        cli.db.save_template.return_value = True
+        cli.db.save_message_template.return_value = True
 
         result = cli.add_template("Test Template", "This is a test template")
 
-        cli.db.save_template.assert_called_once_with(
+        cli.db.save_message_template.assert_called_once_with(
             "Test Template", "This is a test template"
         )
         assert result is True
@@ -366,7 +366,7 @@ class TestCLITemplatesFeatures:
 
         result = cli.add_template("Test Template", "")
 
-        cli.db.save_template.assert_not_called()
+        cli.db.save_message_template.assert_not_called()
         assert result is False
 
     @patch("src.cli.cli.SMSCommandLineInterface._initialize_services")
@@ -522,7 +522,12 @@ class TestCLISchedulingFeatures:
 
         future_time = (datetime.now() + timedelta(days=2)).isoformat()
         result = cli.schedule_message(
-            "+1234567890", "Test message", future_time, None, None, None
+            "+1234567890",
+            "Test message",
+            future_time,
+            service=None,
+            recurring=None,
+            interval=None,
         )
 
         cli.validator.validate_phone_input.assert_called_once_with("+1234567890")
@@ -546,7 +551,12 @@ class TestCLISchedulingFeatures:
 
         future_time = (datetime.now() + timedelta(days=2)).isoformat()
         result = cli.schedule_message(
-            "+invalid", "Test message", future_time, None, None, None
+            "+invalid",
+            "Test message",
+            future_time,
+            service=None,
+            recurring=None,
+            interval=None,
         )
 
         cli.validator.validate_phone_input.assert_called_once_with("+invalid")
@@ -1090,7 +1100,7 @@ class TestCLIImportExportFeatures:
         cli.logger = MagicMock()
 
         # Mock scheduler stop failure
-        cli.scheduler.stop.side_effect = Exception("Scheduler stop failed")
+        cli.scheduler.stop.side_effect = RuntimeError("Scheduler stop failed")
 
         # Test shutdown (should not raise exception)
         cli.shutdown()
@@ -1354,7 +1364,7 @@ class TestMainFunction:
 
         mock_cli_instance = MagicMock()
         mock_cli_class.return_value = mock_cli_instance
-        mock_cli_instance.list_contacts.side_effect = Exception("Test error")
+        mock_cli_instance.list_contacts.side_effect = RuntimeError("Test error")
 
         assert main() == 1
 

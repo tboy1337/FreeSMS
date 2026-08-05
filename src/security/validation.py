@@ -5,7 +5,6 @@ Input Validation - Security utilities for validating user input
 import datetime
 import html
 import re
-from typing import Any, Optional, Tuple
 
 
 class InputValidator:
@@ -20,7 +19,7 @@ class InputValidator:
         return html.escape(text)
 
     @staticmethod
-    def validate_phone_input(phone: str) -> Tuple[bool, Optional[str]]:
+    def validate_phone_input(phone: str) -> tuple[bool, str | None]:
         """Validate a phone number input format"""
         if not phone:
             return False, "Phone number is required"
@@ -29,11 +28,14 @@ class InputValidator:
         clean_phone = re.sub(r"[\s\-\(\)\.]", "", phone)
 
         # Check if it's a reasonable phone number
-        # This is a basic validation; the phonenumbers library will do more thorough validation
+        # phonenumbers library performs more thorough validation elsewhere
         if not clean_phone.replace("+", "").isdigit():
             return (
                 False,
-                "Phone number should contain only digits, spaces, and + - ( ) characters",
+                (
+                    "Phone number should contain only digits, spaces, "
+                    "and + - ( ) characters"
+                ),
             )
 
         if len(clean_phone) < 7 or len(clean_phone) > 15:
@@ -44,7 +46,7 @@ class InputValidator:
     @staticmethod
     def validate_message(
         message: str, max_length: int = 1600
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """Validate a message to ensure it meets requirements"""
         if not message:
             return False, "Message text is required"
@@ -55,7 +57,7 @@ class InputValidator:
         return True, None
 
     @staticmethod
-    def validate_email(email: str) -> Tuple[bool, Optional[str]]:
+    def validate_email(email: str) -> tuple[bool, str | None]:
         """Validate an email address format"""
         if not email:
             return False, "Email is required"
@@ -72,16 +74,13 @@ class InputValidator:
         """Sanitize a filename to prevent path traversal attacks"""
         # Remove any directory components
         safe_name = re.sub(r'[\\/*?:"<>|]', "", filename)
-        safe_name = safe_name.replace("..", "")
-
-        # Ensure it's not empty after sanitization
-        if not safe_name:
+        if not (safe_name := safe_name.replace("..", "")):
             safe_name = "file"
 
         return safe_name
 
     @staticmethod
-    def validate_country_code(country_code: str) -> Tuple[bool, Optional[str]]:
+    def validate_country_code(country_code: str) -> tuple[bool, str | None]:
         """Validate a country code"""
         if not country_code:
             return False, "Country code is required"
@@ -100,7 +99,7 @@ class InputValidator:
         return False, "Invalid country code format"
 
     @staticmethod
-    def validate_api_key(api_key: str) -> Tuple[bool, Optional[str]]:
+    def validate_api_key(api_key: str) -> tuple[bool, str | None]:
         """Validate an API key format"""
         if not api_key:
             return False, "API key is required"
@@ -118,7 +117,7 @@ class InputValidator:
     @staticmethod
     def validate_date_format(
         date_str: str, expected_format: str = "%Y-%m-%d"
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """Validate a date string format"""
         if not date_str:
             return False, "Date is required"
@@ -132,7 +131,7 @@ class InputValidator:
     @staticmethod
     def validate_time_format(
         time_str: str, expected_format: str = "%H:%M"
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """Validate a time string format"""
         if not time_str:
             return False, "Time is required"

@@ -3,14 +3,18 @@ Database module for SMS application
 """
 
 import json
-import os
 import sqlite3
 import threading
 from datetime import datetime
-from functools import wraps
-from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
+from typing import Any
 
+from src.models.database_helpers import (
+    DB_TIMESTAMP_FORMAT,
+    DatabaseError,
+    db_locked,
+    format_db_timestamp,
+)
+from src.models.database_schema import create_tables
 from src.security.encryption import (
     CredentialEncryptionError,
     decrypt_credentials,
@@ -21,31 +25,7 @@ from src.security.encryption import (
 from src.utils.logger import get_logger
 from src.utils.paths import get_app_dir, get_db_path
 
-_DB_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
-
-_F = TypeVar("_F", bound=Callable[..., Any])
-
-
-def _db_locked(method: _F) -> _F:
-    """Run a database method under the instance reentrant lock."""
-
-    @wraps(method)
-    def wrapper(self: "Database", *args: Any, **kwargs: Any) -> Any:
-        with self._lock:
-            return method(self, *args, **kwargs)
-
-    return wrapper
-
-
-def _format_db_timestamp(value: datetime | str) -> str:
-    """Format a datetime or string for SQLite TEXT timestamp columns."""
-    if isinstance(value, datetime):
-        return value.strftime(_DB_TIMESTAMP_FORMAT)
-    return value
-
-
-class DatabaseError(Exception):
-    """Raised when the database cannot be initialized or accessed."""
+__all__ = ["Database", "DatabaseError"]
 
 
 class Database:
@@ -90,10 +70,10 @@ class Database:
             # Create tables if they don't exist
             self._create_tables()
 
-            self.logger.info(f"Database initialized at {self.db_path}")
+            self.logger.info("Database initialized at %s", self.db_path)
 
         except sqlite3.Error as e:
-            self.logger.error(f"Database initialization error: {e}")
+            self.logger.error("Database initialization error: %s", e)
             raise DatabaseError(
                 f"Failed to initialize database at {self.db_path}: {e}"
             ) from e
@@ -101,77 +81,10 @@ class Database:
     def _create_tables(self):
         """Create database tables if they don't exist"""
         cursor = self.conn.cursor()
-
-        # API credentials table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS api_credentials (
-            id INTEGER PRIMARY KEY,
-            service_name TEXT NOT NULL,
-            credentials TEXT NOT NULL,
-            is_active INTEGER DEFAULT 0,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        # Contacts table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS contacts (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            phone TEXT NOT NULL,
-            country TEXT,
-            notes TEXT,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        # Message history table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS message_history (
-            id INTEGER PRIMARY KEY,
-            recipient TEXT NOT NULL,
-            message TEXT NOT NULL,
-            service TEXT NOT NULL,
-            status TEXT NOT NULL,
-            message_id TEXT,
-            sent_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            details TEXT
-        )
-        """)
-
-        # Scheduled messages table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS scheduled_messages (
-            id INTEGER PRIMARY KEY,
-            recipient TEXT NOT NULL,
-            message TEXT NOT NULL,
-            scheduled_time TEXT NOT NULL,
-            service TEXT,
-            recurring TEXT,
-            recurring_interval TEXT,
-            status TEXT DEFAULT 'pending',
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            completed_at TEXT,
-            last_run TEXT
-        )
-        """)
-
-        # Message templates table
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS message_templates (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL,
-            content TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        # Commit changes
+        create_tables(cursor)
         self.conn.commit()
 
-    @_db_locked
+    @db_locked
     def close(self):
         """Close the database connection"""
         if self.conn:
@@ -182,13 +95,19 @@ class Database:
         """Ensure open connections are closed when instances are garbage-collected."""
         try:
             self.close()
-        except Exception as exc:
+        except (
+            sqlite3.Error,
+            DatabaseError,
+            RuntimeError,
+            AttributeError,
+            OSError,
+        ) as exc:
             if hasattr(self, "logger"):
                 self.logger.debug("Database cleanup during GC failed: %s", exc)
 
-    @_db_locked
+    @db_locked
     def save_api_credentials(
-        self, service_name: str, credentials: Dict[str, str], is_active: bool = False
+        self, service_name: str, credentials: dict[str, str], is_active: bool = False
     ) -> bool:
         """
         Save API credentials for a service
@@ -211,14 +130,13 @@ class Database:
             cursor.execute(
                 "SELECT id FROM api_credentials WHERE service_name = ?", (service_name,)
             )
-            row = cursor.fetchone()
 
-            if row:
+            if cursor.fetchone():
                 # Update existing credentials
                 cursor.execute(
                     """
-                UPDATE api_credentials 
-                SET credentials = ?, is_active = ? 
+                UPDATE api_credentials
+                SET credentials = ?, is_active = ?
                 WHERE service_name = ?
                 """,
                     (creds_stored, 1 if is_active else 0, service_name),
@@ -227,7 +145,7 @@ class Database:
                 # Insert new credentials
                 cursor.execute(
                     """
-                INSERT INTO api_credentials (service_name, credentials, is_active) 
+                INSERT INTO api_credentials (service_name, credentials, is_active)
                 VALUES (?, ?, ?)
                 """,
                     (service_name, creds_stored, 1 if is_active else 0),
@@ -237,26 +155,26 @@ class Database:
             if is_active:
                 cursor.execute(
                     """
-                UPDATE api_credentials 
-                SET is_active = 0 
+                UPDATE api_credentials
+                SET is_active = 0
                 WHERE service_name != ?
                 """,
                     (service_name,),
                 )
 
             self.conn.commit()
-            self.logger.info(f"API credentials saved for {service_name}")
+            self.logger.info("API credentials saved for %s", service_name)
             return True
 
         except CredentialEncryptionError as e:
             self.logger.error("Error encrypting API credentials: %s", e)
             return False
         except sqlite3.Error as e:
-            self.logger.error(f"Error saving API credentials: {e}")
+            self.logger.error("Error saving API credentials: %s", e)
             return False
 
-    @_db_locked
-    def get_api_credentials(self, service_name: str) -> Optional[Dict[str, str]]:
+    @db_locked
+    def get_api_credentials(self, service_name: str) -> dict[str, str] | None:
         """
         Get API credentials for a service
 
@@ -272,20 +190,17 @@ class Database:
                 "SELECT credentials FROM api_credentials WHERE service_name = ?",
                 (service_name,),
             )
-            row = cursor.fetchone()
 
-            if not row:
+            if not (row := cursor.fetchone()):
                 return None
 
             stored_value = row["credentials"]
-            credentials = decrypt_credentials(stored_value)
 
-            if credentials is not None:
+            if (credentials := decrypt_credentials(stored_value)) is not None:
                 return credentials
 
             if is_legacy_plaintext(stored_value):
-                legacy = parse_legacy_credentials(stored_value)
-                if legacy is not None:
+                if (legacy := parse_legacy_credentials(stored_value)) is not None:
                     self.logger.info(
                         "Migrating legacy plaintext credentials for %s",
                         service_name,
@@ -300,11 +215,11 @@ class Database:
             return None
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error getting API credentials: {e}")
+            self.logger.error("Error getting API credentials: %s", e)
             return None
 
-    @_db_locked
-    def get_active_services(self) -> List[str]:
+    @db_locked
+    def get_active_services(self) -> list[str]:
         """
         Get names of active services
 
@@ -321,10 +236,10 @@ class Database:
             return [row["service_name"] for row in rows]
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error getting active services: {e}")
+            self.logger.error("Error getting active services: %s", e)
             return []
 
-    @_db_locked
+    @db_locked
     def save_contact(
         self, name: str, phone: str, country: str = "", notes: str = ""
     ) -> bool:
@@ -345,14 +260,13 @@ class Database:
 
             # Check if contact already exists with this phone number
             cursor.execute("SELECT id FROM contacts WHERE phone = ?", (phone,))
-            row = cursor.fetchone()
 
-            if row:
+            if cursor.fetchone():
                 # Update existing contact
                 cursor.execute(
                     """
-                UPDATE contacts 
-                SET name = ?, country = ?, notes = ?, updated_at = CURRENT_TIMESTAMP 
+                UPDATE contacts
+                SET name = ?, country = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE phone = ?
                 """,
                     (name, country, notes, phone),
@@ -361,22 +275,22 @@ class Database:
                 # Insert new contact
                 cursor.execute(
                     """
-                INSERT INTO contacts (name, phone, country, notes) 
+                INSERT INTO contacts (name, phone, country, notes)
                 VALUES (?, ?, ?, ?)
                 """,
                     (name, phone, country, notes),
                 )
 
             self.conn.commit()
-            self.logger.info(f"Contact saved: {name} ({phone})")
+            self.logger.info("Contact saved: %s (%s)", name, phone)
             return True
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error saving contact: {e}")
+            self.logger.error("Error saving contact: %s", e)
             return False
 
-    @_db_locked
-    def get_contacts(self) -> List[Dict[str, Any]]:
+    @db_locked
+    def get_contacts(self) -> list[dict[str, Any]]:
         """
         Get all contacts
 
@@ -391,11 +305,11 @@ class Database:
             return [dict(row) for row in rows]
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error getting contacts: {e}")
+            self.logger.error("Error getting contacts: %s", e)
             return []
 
-    @_db_locked
-    def get_contact(self, contact_id: int) -> Optional[Dict[str, Any]]:
+    @db_locked
+    def get_contact(self, contact_id: int) -> dict[str, Any] | None:
         """
         Get a contact by ID
 
@@ -408,18 +322,17 @@ class Database:
         try:
             cursor = self.conn.cursor()
             cursor.execute("SELECT * FROM contacts WHERE id = ?", (contact_id,))
-            row = cursor.fetchone()
 
-            if row:
+            if row := cursor.fetchone():
                 return dict(row)
 
             return None
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error getting contact: {e}")
+            self.logger.error("Error getting contact: %s", e)
             return None
 
-    @_db_locked
+    @db_locked
     def delete_contact(self, contact_id: int) -> bool:
         """
         Delete a contact
@@ -435,15 +348,15 @@ class Database:
             cursor.execute("DELETE FROM contacts WHERE id = ?", (contact_id,))
             self.conn.commit()
 
-            self.logger.info(f"Contact deleted: ID {contact_id}")
+            self.logger.info("Contact deleted: ID %s", contact_id)
             return True
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error deleting contact: {e}")
+            self.logger.error("Error deleting contact: %s", e)
             return False
 
-    @_db_locked
-    def search_contacts(self, query: str) -> List[Dict[str, Any]]:
+    @db_locked
+    def search_contacts(self, query: str) -> list[dict[str, Any]]:
         """
         Search contacts by name or phone number
 
@@ -461,8 +374,8 @@ class Database:
 
             cursor.execute(
                 """
-            SELECT * FROM contacts 
-            WHERE name LIKE ? OR phone LIKE ? 
+            SELECT * FROM contacts
+            WHERE name LIKE ? OR phone LIKE ?
             ORDER BY name
             """,
                 (search_pattern, search_pattern),
@@ -473,16 +386,17 @@ class Database:
             return [dict(row) for row in rows]
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error searching contacts: {e}")
+            self.logger.error("Error searching contacts: %s", e)
             return []
 
-    @_db_locked
+    @db_locked
     def save_message_history(
         self,
         recipient: str,
         message: str,
         service: str,
         status: str,
+        *,
         message_id: str = None,
         details: str = None,
     ) -> bool:
@@ -505,21 +419,23 @@ class Database:
 
             cursor.execute(
                 """
-            INSERT INTO message_history (recipient, message, service, status, message_id, details) 
+            INSERT INTO message_history (
+                recipient, message, service, status, message_id, details
+            )
             VALUES (?, ?, ?, ?, ?, ?)
             """,
                 (recipient, message, service, status, message_id, details),
             )
 
             self.conn.commit()
-            self.logger.info(f"Message history saved for {recipient}")
+            self.logger.info("Message history saved for %s", recipient)
             return True
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error saving message history: {e}")
+            self.logger.error("Error saving message history: %s", e)
             return False
 
-    @_db_locked
+    @db_locked
     def count_successful_sends_today(self, service_name: str) -> int:
         """
         Count successful message sends for a service today.
@@ -543,16 +459,15 @@ class Database:
                 """,
                 (service_name, f"{today_prefix}%"),
             )
-            row = cursor.fetchone()
-            if row:
+            if row := cursor.fetchone():
                 return int(row["count"])
             return 0
         except sqlite3.Error as e:
-            self.logger.error(f"Error counting today's sends: {e}")
+            self.logger.error("Error counting today's sends: %s", e)
             return 0
 
-    @_db_locked
-    def get_message_history(self, limit: int = 100) -> List[Dict[str, Any]]:
+    @db_locked
+    def get_message_history(self, limit: int = 100) -> list[dict[str, Any]]:
         """
         Get message history
 
@@ -572,11 +487,11 @@ class Database:
             return [dict(row) for row in rows]
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error getting message history: {e}")
+            self.logger.error("Error getting message history: %s", e)
             return []
 
-    @_db_locked
-    def get_message_history_by_id(self, message_id: int) -> Optional[Dict[str, Any]]:
+    @db_locked
+    def get_message_history_by_id(self, message_id: int) -> dict[str, Any] | None:
         """
         Get a single message history record by ID.
 
@@ -589,26 +504,26 @@ class Database:
         try:
             cursor = self.conn.cursor()
             cursor.execute("SELECT * FROM message_history WHERE id = ?", (message_id,))
-            row = cursor.fetchone()
-            if row:
+            if row := cursor.fetchone():
                 return dict(row)
             return None
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error getting message history by id: {e}")
+            self.logger.error("Error getting message history by id: %s", e)
             return None
 
-    @_db_locked
+    @db_locked
     def save_scheduled_message(
         self,
         recipient: str,
         message: str,
         scheduled_time: str,
+        *,
         service: str = None,
         recurring: str = None,
         recurring_interval: int = None,
         recurrence_data: dict = None,
-    ) -> Optional[int]:
+    ) -> int | None:
         """
         Save a scheduled message
 
@@ -619,7 +534,8 @@ class Database:
             service: Service name to use
             recurring: Recurring type (daily, weekly, monthly, None)
             recurring_interval: Interval for recurring messages
-            recurrence_data: Additional data for recurring messages (will be stored in recurring_interval as JSON)
+            recurrence_data: Additional data for recurring messages
+                (stored in recurring_interval as JSON)
 
         Returns:
             ID of the saved message or None on error
@@ -631,12 +547,12 @@ class Database:
             if recurrence_data is not None:
                 recurring_interval = json.dumps(recurrence_data)
 
-            scheduled_time = _format_db_timestamp(scheduled_time)
+            scheduled_time = format_db_timestamp(scheduled_time)
 
             cursor.execute(
                 """
-            INSERT INTO scheduled_messages 
-            (recipient, message, scheduled_time, service, recurring, recurring_interval) 
+            INSERT INTO scheduled_messages
+            (recipient, message, scheduled_time, service, recurring, recurring_interval)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
                 (
@@ -651,17 +567,17 @@ class Database:
 
             self.conn.commit()
             message_id = cursor.lastrowid
-            self.logger.info(f"Scheduled message saved: ID {message_id}")
+            self.logger.info("Scheduled message saved: ID %s", message_id)
             return message_id
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error saving scheduled message: {e}")
+            self.logger.error("Error saving scheduled message: %s", e)
             return None
 
-    @_db_locked
+    @db_locked
     def get_scheduled_messages(
         self, include_completed: bool = False
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """
         Get all scheduled messages
 
@@ -677,7 +593,10 @@ class Database:
             if include_completed:
                 query = "SELECT * FROM scheduled_messages ORDER BY scheduled_time"
             else:
-                query = "SELECT * FROM scheduled_messages WHERE status != 'completed' ORDER BY scheduled_time"
+                query = (
+                    "SELECT * FROM scheduled_messages "
+                    "WHERE status != 'completed' ORDER BY scheduled_time"
+                )
 
             cursor.execute(query)
             rows = cursor.fetchall()
@@ -685,11 +604,11 @@ class Database:
             return [dict(row) for row in rows]
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error getting scheduled messages: {e}")
+            self.logger.error("Error getting scheduled messages: %s", e)
             return []
 
-    @_db_locked
-    def get_pending_scheduled_messages(self) -> List[Dict[str, Any]]:
+    @db_locked
+    def get_pending_scheduled_messages(self) -> list[dict[str, Any]]:
         """
         Get pending scheduled messages that are due
 
@@ -698,12 +617,12 @@ class Database:
         """
         try:
             cursor = self.conn.cursor()
-            now = datetime.now().strftime(_DB_TIMESTAMP_FORMAT)
+            now = datetime.now().strftime(DB_TIMESTAMP_FORMAT)
 
             cursor.execute(
                 """
-            SELECT * FROM scheduled_messages 
-            WHERE status = 'pending' AND scheduled_time <= ? 
+            SELECT * FROM scheduled_messages
+            WHERE status = 'pending' AND scheduled_time <= ?
             ORDER BY scheduled_time
             """,
                 (now,),
@@ -714,20 +633,10 @@ class Database:
             return [dict(row) for row in rows]
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error getting pending scheduled messages: {e}")
+            self.logger.error("Error getting pending scheduled messages: %s", e)
             return []
 
-    @_db_locked
-    def get_due_scheduled_messages(self) -> List[Dict[str, Any]]:
-        """
-        Alias for get_pending_scheduled_messages
-
-        Returns:
-            List of scheduled message dictionaries that are due
-        """
-        return self.get_pending_scheduled_messages()
-
-    @_db_locked
+    @db_locked
     def update_scheduled_message_status(
         self, message_id: int, status: str, completed_at: str = None
     ) -> bool:
@@ -748,8 +657,8 @@ class Database:
             if completed_at:
                 cursor.execute(
                     """
-                UPDATE scheduled_messages 
-                SET status = ?, completed_at = ? 
+                UPDATE scheduled_messages
+                SET status = ?, completed_at = ?
                 WHERE id = ?
                 """,
                     (status, completed_at, message_id),
@@ -757,8 +666,8 @@ class Database:
             else:
                 cursor.execute(
                     """
-                UPDATE scheduled_messages 
-                SET status = ? 
+                UPDATE scheduled_messages
+                SET status = ?
                 WHERE id = ?
                 """,
                     (status, message_id),
@@ -766,15 +675,17 @@ class Database:
 
             self.conn.commit()
             self.logger.info(
-                f"Scheduled message status updated: ID {message_id}, status {status}"
+                "Scheduled message status updated: ID %s, status %s",
+                message_id,
+                status,
             )
             return True
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error updating scheduled message status: {e}")
+            self.logger.error("Error updating scheduled message status: %s", e)
             return False
 
-    @_db_locked
+    @db_locked
     def delete_scheduled_message(self, message_id: int) -> bool:
         """
         Delete a scheduled message
@@ -789,16 +700,16 @@ class Database:
             cursor = self.conn.cursor()
             cursor.execute("DELETE FROM scheduled_messages WHERE id = ?", (message_id,))
             self.conn.commit()
-            self.logger.info(f"Scheduled message deleted: ID {message_id}")
+            self.logger.info("Scheduled message deleted: ID %s", message_id)
             return True
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error deleting scheduled message: {e}")
+            self.logger.error("Error deleting scheduled message: %s", e)
             return False
 
-    @_db_locked
+    @db_locked
     def save_message_template(
-        self, name: str, content: str, template_id: Optional[int] = None
+        self, name: str, content: str, template_id: int | None = None
     ) -> bool:
         """
         Save a message template
@@ -823,7 +734,7 @@ class Database:
                 """,
                     (name, content, template_id),
                 )
-                if cursor.rowcount == 0:
+                if not cursor.rowcount:
                     self.logger.error("Template not found for update: %s", template_id)
                     return False
             else:
@@ -831,9 +742,8 @@ class Database:
                 cursor.execute(
                     "SELECT id FROM message_templates WHERE name = ?", (name,)
                 )
-                row = cursor.fetchone()
 
-                if row:
+                if cursor.fetchone():
                     # Update existing template
                     cursor.execute(
                         """
@@ -854,15 +764,15 @@ class Database:
                     )
 
             self.conn.commit()
-            self.logger.info(f"Message template saved: {name}")
+            self.logger.info("Message template saved: %s", name)
             return True
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error saving message template: {e}")
+            self.logger.error("Error saving message template: %s", e)
             return False
 
-    @_db_locked
-    def get_message_templates(self) -> List[Dict[str, Any]]:
+    @db_locked
+    def get_message_templates(self) -> list[dict[str, Any]]:
         """
         Get all message templates
 
@@ -877,10 +787,10 @@ class Database:
             return [dict(row) for row in rows]
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error getting message templates: {e}")
+            self.logger.error("Error getting message templates: %s", e)
             return []
 
-    @_db_locked
+    @db_locked
     def delete_message_template(self, template_id: int) -> bool:
         """
         Delete a message template
@@ -899,53 +809,8 @@ class Database:
             return True
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error deleting message template: {e}")
+            self.logger.error("Error deleting message template: %s", e)
             return False
-
-    @_db_locked
-    def get_templates(self) -> List[Dict[str, Any]]:
-        """
-        Get all message templates (alias for get_message_templates)
-
-        Returns:
-            List of templates as dictionaries
-        """
-        return self.get_message_templates()
-
-    @_db_locked
-    def save_template(
-        self, name: str, content: str, template_id: Optional[int] = None
-    ) -> bool:
-        """
-        Save a message template (alias for save_message_template)
-
-        Args:
-            name: Template name
-            content: Template content
-            template_id: When set, update the template with this ID
-
-        Returns:
-            True if successful, False otherwise
-        """
-        return self.save_message_template(name, content, template_id=template_id)
-
-    @_db_locked
-    def get_cursor(self):
-        """
-        Get the database cursor.
-
-        Intended for tests only; production code should use locked Database methods.
-        """
-        return self.conn.cursor()
-
-    @_db_locked
-    def get_connection(self):
-        """
-        Get the database connection.
-
-        Intended for tests only; production code should use locked Database methods.
-        """
-        return self.conn
 
     @property
     def cursor(self):
@@ -955,7 +820,7 @@ class Database:
         Returns:
             SQLite cursor object
         """
-        return self.get_cursor()
+        return self.conn.cursor()
 
     @property
     def connection(self):
@@ -965,12 +830,13 @@ class Database:
         Returns:
             SQLite connection object
         """
-        return self.get_connection()
+        return self.conn
 
-    @_db_locked
+    @db_locked
     def update_scheduled_message(
         self,
         message_id: int,
+        *,
         recipient: str = None,
         message: str = None,
         scheduled_time: datetime = None,
@@ -1011,7 +877,7 @@ class Database:
                 params.append(message)
 
             if scheduled_time is not None:
-                scheduled_time = _format_db_timestamp(scheduled_time)
+                scheduled_time = format_db_timestamp(scheduled_time)
                 updates.append("scheduled_time = ?")
                 params.append(scheduled_time)
 
@@ -1039,15 +905,16 @@ class Database:
             params.append(message_id)
 
             # Execute the update (column names are whitelisted literals only)
+            update_clause = ", ".join(updates)
             cursor.execute(  # nosec B608
-                f"UPDATE scheduled_messages SET {', '.join(updates)} WHERE id = ?",
+                f"UPDATE scheduled_messages SET {update_clause} WHERE id = ?",
                 params,
             )
 
             self.conn.commit()
-            self.logger.info(f"Scheduled message updated: ID {message_id}")
+            self.logger.info("Scheduled message updated: ID %s", message_id)
             return True
 
         except sqlite3.Error as e:
-            self.logger.error(f"Error updating scheduled message: {e}")
+            self.logger.error("Error updating scheduled message: %s", e)
             return False

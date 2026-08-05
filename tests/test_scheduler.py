@@ -127,14 +127,14 @@ class TestMessageScheduler(unittest.TestCase):
             {"id": 1, "recipient": "+1234567890", "message": "Test 1"},
             {"id": 2, "recipient": "+0987654321", "message": "Test 2"},
         ]
-        self.mock_db.get_due_scheduled_messages.return_value = due_messages
+        self.mock_db.get_pending_scheduled_messages.return_value = due_messages
 
         # Mock the process method
         with patch.object(self.scheduler, "_process_scheduled_message") as mock_process:
             self.scheduler.check_due_messages()
 
         # Verify database was queried and messages processed
-        self.mock_db.get_due_scheduled_messages.assert_called_once()
+        self.mock_db.get_pending_scheduled_messages.assert_called_once()
         assert mock_process.call_count == 2
         mock_process.assert_any_call(due_messages[0])
         mock_process.assert_any_call(due_messages[1])

@@ -36,6 +36,8 @@ class ContactTab(QWidget):
         super().__init__()
         self.app = app
         self.selection_mode = False
+        self.country_codes: dict[str, str] = {}
+        self.contact_id: int | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -150,7 +152,7 @@ class ContactTab(QWidget):
 
         countries.sort(key=lambda x: x[1])
 
-        for code, name in countries:
+        for _code, name in countries:
             self.country_combo.addItem(name)
 
         # Set default to United States
@@ -179,8 +181,7 @@ class ContactTab(QWidget):
                 # Country
                 country_name = contact["country"]
                 try:
-                    country = pycountry.countries.get(alpha_2=contact["country"])
-                    if country:
+                    if country := pycountry.countries.get(alpha_2=contact["country"]):
                         country_name = country.name
                 except (KeyError, AttributeError):
                     pass
@@ -188,15 +189,13 @@ class ContactTab(QWidget):
                 country_item = QTableWidgetItem(country_name)
                 self.contact_table.setItem(row, 2, country_item)
 
-        except Exception as e:
-            logger.exception("Failed to load contacts: %s", e)
-            QMessageBox.critical(self, "Error", f"Failed to load contacts: {str(e)}")
+        except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+            logger.exception("Failed to load contacts: %s", exc)
+            QMessageBox.critical(self, "Error", f"Failed to load contacts: {exc!s}")
 
     def _on_search(self):
         """Handle search button click"""
-        query = self.search_entry.text().strip()
-
-        if not query:
+        if not (query := self.search_entry.text().strip()):
             self.load_contacts()
             return
 
@@ -215,8 +214,7 @@ class ContactTab(QWidget):
 
                 country_name = contact["country"]
                 try:
-                    country = pycountry.countries.get(alpha_2=contact["country"])
-                    if country:
+                    if country := pycountry.countries.get(alpha_2=contact["country"]):
                         country_name = country.name
                 except (KeyError, AttributeError):
                     pass
@@ -224,9 +222,9 @@ class ContactTab(QWidget):
                 country_item = QTableWidgetItem(country_name)
                 self.contact_table.setItem(row, 2, country_item)
 
-        except Exception as e:
-            logger.exception("Contact search failed: %s", e)
-            QMessageBox.critical(self, "Error", f"Search failed: {str(e)}")
+        except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+            logger.exception("Contact search failed: %s", exc)
+            QMessageBox.critical(self, "Error", f"Search failed: {exc!s}")
 
     def _on_add_contact(self):
         """Handle add contact button click"""
@@ -235,8 +233,7 @@ class ContactTab(QWidget):
     def _on_contact_selected(self, index):
         """Handle contact selection via double-click"""
         row = index.row()
-        name_item = self.contact_table.item(row, 0)
-        if not name_item:
+        if not (name_item := self.contact_table.item(row, 0)):
             return
 
         contact_id = name_item.data(Qt.ItemDataRole.UserRole)
@@ -248,8 +245,7 @@ class ContactTab(QWidget):
 
         # Load for editing
         try:
-            contact = self.app.contact_manager.get_contact(contact_id)
-            if contact:
+            if contact := self.app.contact_manager.get_contact(contact_id):
                 self.contact_id = contact_id
                 self.name_entry.setText(contact["name"])
                 self.phone_entry.setText(contact["phone"])
@@ -262,9 +258,9 @@ class ContactTab(QWidget):
                     if self.country_codes.get(item_text) == country_code:
                         self.country_combo.setCurrentIndex(i)
                         break
-        except Exception as e:
-            logger.exception("Failed to load contact: %s", e)
-            QMessageBox.critical(self, "Error", f"Failed to load contact: {str(e)}")
+        except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+            logger.exception("Failed to load contact: %s", exc)
+            QMessageBox.critical(self, "Error", f"Failed to load contact: {exc!s}")
 
     def _on_save_contact(self):
         """Handle save contact button click"""
@@ -290,7 +286,7 @@ class ContactTab(QWidget):
         country_code = self.country_codes.get(country, "US")
 
         try:
-            if hasattr(self, "contact_id"):
+            if self.contact_id is not None:
                 success = self.app.contact_manager.update_contact(
                     self.contact_id, name, phone, country_code, notes
                 )
@@ -305,13 +301,13 @@ class ContactTab(QWidget):
                 self.load_contacts()
             else:
                 QMessageBox.critical(self, "Error", "Failed to save contact")
-        except Exception as e:
-            logger.exception("Failed to save contact: %s", e)
-            QMessageBox.critical(self, "Error", f"Failed to save contact: {str(e)}")
+        except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+            logger.exception("Failed to save contact: %s", exc)
+            QMessageBox.critical(self, "Error", f"Failed to save contact: {exc!s}")
 
     def _on_delete_contact(self):
         """Handle delete contact button click"""
-        if hasattr(self, "contact_id"):
+        if self.contact_id is not None:
             reply = QMessageBox.question(
                 self,
                 "Confirm Delete",
@@ -330,10 +326,10 @@ class ContactTab(QWidget):
                         self.load_contacts()
                     else:
                         QMessageBox.critical(self, "Error", "Failed to delete contact")
-                except Exception as e:
-                    logger.exception("Failed to delete contact: %s", e)
+                except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+                    logger.exception("Failed to delete contact: %s", exc)
                     QMessageBox.critical(
-                        self, "Error", f"Failed to delete contact: {str(e)}"
+                        self, "Error", f"Failed to delete contact: {exc!s}"
                     )
         else:
             QMessageBox.information(
@@ -352,8 +348,7 @@ class ContactTab(QWidget):
                 self.country_combo.setCurrentIndex(i)
                 break
 
-        if hasattr(self, "contact_id"):
-            delattr(self, "contact_id")
+        self.contact_id = None
 
     def set_selection_mode(self, mode=True):
         """Set selection mode for choosing a contact"""

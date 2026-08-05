@@ -4,7 +4,7 @@ TextBelt SMS service implementation
 
 import json
 import os
-from typing import Any, Dict
+from typing import Any
 
 import requests
 
@@ -28,12 +28,10 @@ class TextBeltService(SMSService):
 
     def _load_env_credentials(self):
         """Load credentials from environment variables"""
-        api_key = os.environ.get("TEXTBELT_API_KEY")
-
-        if api_key:
+        if api_key := os.environ.get("TEXTBELT_API_KEY"):
             self.configure({"api_key": api_key})
 
-    def configure(self, credentials: Dict[str, str], validate: bool = False) -> bool:
+    def configure(self, credentials: dict[str, str], validate: bool = False) -> bool:
         """
         Configure the TextBelt service with credentials
 
@@ -58,8 +56,11 @@ class TextBeltService(SMSService):
             self.logger.info("TextBelt service configured successfully")
             return True
 
-        except Exception as e:
-            self.logger.error(f"Error configuring TextBelt: {e}")
+        except (OSError, ValueError, TypeError) as exc:
+            self.logger.error("Error configuring TextBelt: %s", exc)
+            return False
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.logger.error("Error configuring TextBelt: %s", exc)
             return False
 
     def send_sms(self, recipient: str, message: str) -> SMSResponse:
@@ -97,25 +98,25 @@ class TextBeltService(SMSService):
                         "timestamp": data.get("timestamp"),
                     },
                 )
-            else:
-                # Failed send
-                return SMSResponse(
-                    success=False,
-                    error=data.get("error") or "Unknown error",
-                    details=data,
-                )
 
-        except requests.RequestException as e:
-            self.logger.error(f"TextBelt API request error: {e}")
-            return SMSResponse(success=False, error=f"API request error: {str(e)}")
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Error parsing TextBelt response: {e}")
-            return SMSResponse(success=False, error=f"Error parsing response: {str(e)}")
-        except Exception as e:
-            self.logger.error(f"Error sending SMS with TextBelt: {e}")
-            return SMSResponse(success=False, error=f"Error: {str(e)}")
+            # Failed send
+            return SMSResponse(
+                success=False,
+                error=data.get("error") or "Unknown error",
+                details=data,
+            )
 
-    def check_balance(self) -> Dict[str, Any]:
+        except requests.RequestException as exc:
+            self.logger.error("TextBelt API request error: %s", exc)
+            return SMSResponse(success=False, error=f"API request error: {exc!s}")
+        except json.JSONDecodeError as exc:
+            self.logger.error("Error parsing TextBelt response: %s", exc)
+            return SMSResponse(success=False, error=f"Error parsing response: {exc!s}")
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.logger.error("Unexpected TextBelt send error: %s", exc)
+            return SMSResponse(success=False, error=f"Error: {exc!s}")
+
+    def check_balance(self) -> dict[str, Any]:
         """
         Check the TextBelt account balance
 
@@ -138,18 +139,18 @@ class TextBeltService(SMSService):
                     "quota": data.get("quotaRemaining", 0),
                     "limit": data.get("quotaMax", 0),
                 }
-            else:
-                return {"error": data.get("error") or "Unknown error"}
 
-        except requests.RequestException as e:
-            self.logger.error(f"TextBelt API request error: {e}")
-            return {"error": str(e)}
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Error parsing TextBelt response: {e}")
-            return {"error": str(e)}
-        except Exception as e:
-            self.logger.error(f"Error checking TextBelt balance: {e}")
-            return {"error": str(e)}
+            return {"error": data.get("error") or "Unknown error"}
+
+        except requests.RequestException as exc:
+            self.logger.error("TextBelt API request error: %s", exc)
+            return {"error": str(exc)}
+        except json.JSONDecodeError as exc:
+            self.logger.error("Error parsing TextBelt response: %s", exc)
+            return {"error": str(exc)}
+        except (ValueError, TypeError) as exc:
+            self.logger.error("Unexpected TextBelt balance error: %s", exc)
+            return {"error": str(exc)}
 
     def get_remaining_quota(self) -> int:
         """
@@ -174,10 +175,12 @@ class TextBeltService(SMSService):
 
             return 0
 
-        except Exception:
+        except (requests.RequestException, json.JSONDecodeError, KeyError, TypeError):
+            return 0
+        except Exception:  # pylint: disable=broad-exception-caught
             return 0
 
-    def get_delivery_status(self, message_id: str) -> Dict[str, Any]:
+    def get_delivery_status(self, message_id: str) -> dict[str, Any]:
         """
         Get delivery status for a message
 
@@ -202,21 +205,21 @@ class TextBeltService(SMSService):
                 )
 
                 return {"status": delivery_state, "details": data}
-            else:
-                return {
-                    "status": "error",
-                    "error": data.get("error") or "Unknown error",
-                }
 
-        except requests.RequestException as e:
-            self.logger.error(f"TextBelt API request error: {e}")
-            return {"status": "error", "error": str(e)}
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Error parsing TextBelt response: {e}")
-            return {"status": "error", "error": str(e)}
-        except Exception as e:
-            self.logger.error(f"Error checking message status: {e}")
-            return {"status": "error", "error": str(e)}
+            return {
+                "status": "error",
+                "error": data.get("error") or "Unknown error",
+            }
+
+        except requests.RequestException as exc:
+            self.logger.error("TextBelt API request error: %s", exc)
+            return {"status": "error", "error": str(exc)}
+        except json.JSONDecodeError as exc:
+            self.logger.error("Error parsing TextBelt response: %s", exc)
+            return {"status": "error", "error": str(exc)}
+        except (ValueError, TypeError) as exc:
+            self.logger.error("Unexpected TextBelt status error: %s", exc)
+            return {"status": "error", "error": str(exc)}
 
     def validate_credentials(self) -> bool:
         """
@@ -237,5 +240,7 @@ class TextBeltService(SMSService):
             # Consider it valid if we get a 200 status code
             return response.status_code == 200
 
-        except Exception:
+        except requests.RequestException:
+            return False
+        except Exception:  # pylint: disable=broad-exception-caught
             return False

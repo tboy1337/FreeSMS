@@ -3,7 +3,7 @@ Base SMS service module and service response classes
 """
 
 import abc
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 class SMSResponse:
@@ -12,9 +12,9 @@ class SMSResponse:
     def __init__(
         self,
         success: bool,
-        message_id: Optional[str] = None,
-        error: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        message_id: str | None = None,
+        error: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize a new SMS response
@@ -34,8 +34,7 @@ class SMSResponse:
         """String representation of the response"""
         if self.success:
             return f"Success: Message ID {self.message_id}"
-        else:
-            return f"Failed: {self.error}"
+        return f"Failed: {self.error}"
 
 
 class SMSService(abc.ABC):
@@ -64,17 +63,15 @@ class SMSService(abc.ABC):
         Returns:
             SMSResponse object with the result
         """
-        pass
 
     @abc.abstractmethod
-    def check_balance(self) -> Dict[str, Any]:
+    def check_balance(self) -> dict[str, Any]:
         """
         Check the account balance/status
 
         Returns:
             Dictionary with account details
         """
-        pass
 
     @abc.abstractmethod
     def get_remaining_quota(self) -> int:
@@ -84,10 +81,9 @@ class SMSService(abc.ABC):
         Returns:
             Number of messages remaining in quota
         """
-        pass
 
     @abc.abstractmethod
-    def get_delivery_status(self, message_id: str) -> Dict[str, Any]:
+    def get_delivery_status(self, message_id: str) -> dict[str, Any]:
         """
         Get delivery status for a message
 
@@ -97,7 +93,6 @@ class SMSService(abc.ABC):
         Returns:
             Dictionary with delivery status details
         """
-        pass
 
     @abc.abstractmethod
     def validate_credentials(self) -> bool:
@@ -107,4 +102,3 @@ class SMSService(abc.ABC):
         Returns:
             True if credentials are valid, False otherwise
         """
-        pass

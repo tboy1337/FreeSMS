@@ -21,7 +21,6 @@ load_dotenv()
 
 from src import __version__
 from src.cli.cli import main as cli_main
-from src.gui.app import SMSApplication
 from src.services.config_service import ConfigService
 from src.services.notification_service import NotificationService
 from src.utils.logger import setup_logger
@@ -83,6 +82,8 @@ def main() -> int | None:
             qt_app.setWindowIcon(QIcon(icon_path))
     except (ImportError, OSError, RuntimeError) as exc:
         logger.warning("Failed to set application icon: %s", exc)
+
+    from src.gui.app import SMSApplication
 
     main_window = SMSApplication(config=config, notification=notification)
 

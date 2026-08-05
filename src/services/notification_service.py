@@ -3,11 +3,9 @@ Notification service for SMS application
 Provides cross-platform notification functionality
 """
 
-import logging
 import os
 import platform
 import subprocess
-from typing import Optional
 
 from src.security.validation import InputValidator
 from src.utils.logger import get_logger
@@ -36,7 +34,7 @@ class NotificationService:
         self,
         title: str,
         message: str,
-        icon_path: Optional[str] = None,
+        icon_path: str | None = None,
     ) -> None:
         """
         Send a system notification
@@ -53,9 +51,9 @@ class NotificationService:
             return
 
         if self.system == "Windows":
-            self._send_windows_notification(safe_title, safe_message, icon_path)
+            self._send_windows_notification(safe_title, safe_message)
         elif self.system == "Darwin":
-            self._send_macos_notification(safe_title, safe_message, icon_path)
+            self._send_macos_notification(safe_title, safe_message)
         elif self.system == "Linux":
             self._send_linux_notification(safe_title, safe_message, icon_path)
         else:
@@ -65,7 +63,7 @@ class NotificationService:
         self,
         title: str,
         message: str,
-        icon_path: Optional[str] = None,
+        icon_path: str | None = None,
     ) -> bool:
         """Send notification using plyer when available."""
         try:
@@ -82,32 +80,29 @@ class NotificationService:
             notification.notify(**kwargs)
             logger.debug("Notification sent via plyer: %s", title)
             return True
-        except Exception as exc:
+        except (ImportError, OSError, RuntimeError, TypeError, ValueError) as exc:
             logger.warning("plyer notification failed, using fallback: %s", exc)
             return False
 
-    def _send_windows_notification(
-        self,
-        title: str,
-        message: str,
-        icon_path: Optional[str] = None,
-    ) -> None:
+    def _send_windows_notification(self, title: str, message: str) -> None:
         """Send a Windows notification using PowerShell with argument list."""
         try:
             powershell_cmd = (
                 "[Windows.UI.Notifications.ToastNotificationManager, "
                 "Windows.UI.Notifications, ContentType=WindowsRuntime] > $null; "
                 "$template = "
-                "[Windows.UI.Notifications.ToastNotificationManager]::GetTemplateContent("
+                "[Windows.UI.Notifications.ToastNotificationManager]"
+                "::GetTemplateContent("
                 "[Windows.UI.Notifications.ToastTemplateType]::ToastText02); "
                 "$toastXml = [xml]$template; "
                 "$toastXml.GetElementsByTagName('text')[0].AppendChild("
                 "$toastXml.CreateTextNode($args[0])) > $null; "
                 "$toastXml.GetElementsByTagName('text')[1].AppendChild("
                 "$toastXml.CreateTextNode($args[1])) > $null; "
-                "$toast = [Windows.UI.Notifications.ToastNotification]::new($toastXml); "
-                "[Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier("
-                "$args[2]).Show($toast)"
+                "$toast = [Windows.UI.Notifications.ToastNotification]"
+                "::new($toastXml); "
+                "[Windows.UI.Notifications.ToastNotificationManager]"
+                "::CreateToastNotifier($args[2]).Show($toast)"
             )
             subprocess.run(
                 [
@@ -133,12 +128,7 @@ class NotificationService:
         """Escape a string for safe inclusion in AppleScript."""
         return value.replace("\\", "\\\\").replace('"', '\\"')
 
-    def _send_macos_notification(
-        self,
-        title: str,
-        message: str,
-        icon_path: Optional[str] = None,
-    ) -> None:
+    def _send_macos_notification(self, title: str, message: str) -> None:
         """Send a macOS notification using osascript."""
         try:
             safe_title = self._escape_applescript(title)
@@ -162,7 +152,7 @@ class NotificationService:
         self,
         title: str,
         message: str,
-        icon_path: Optional[str] = None,
+        icon_path: str | None = None,
     ) -> None:
         """Send a Linux notification using notify-send with argument list."""
         try:

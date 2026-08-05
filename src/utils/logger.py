@@ -75,10 +75,10 @@ def setup_logger(
         file_handler.setFormatter(file_formatter)
         file_handler.setLevel(log_level)
         logger.addHandler(file_handler)
-    except (PermissionError, OSError) as exc:
+    except OSError as exc:
         print(f"Warning: Could not create file handler: {exc}")
-    except Exception as exc:
-        print(f"Warning: Unexpected error creating file handler: {exc}")
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        print(f"Warning: Could not create file handler: {exc}")
 
     return logger
 

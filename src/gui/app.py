@@ -5,37 +5,28 @@ Main FreeSMS Application GUI
 import os
 import threading
 import time
-from datetime import datetime
 
-import pycountry
-from PySide6.QtCore import Qt, QThread, QTimer, Signal
-from PySide6.QtGui import QIcon, QPixmap
+from PySide6.QtCore import Signal
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
-    QApplication,
-    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
-    QPushButton,
     QStatusBar,
     QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
-from src.api.service_manager import SMSServiceManager
-from src.automation.scheduler import MessageScheduler
 from src.gui.contact_tab import ContactTab
 from src.gui.history_tab import HistoryTab
 from src.gui.message_tab import MessageTab
 from src.gui.schedule_tab import ScheduleTab
 from src.gui.settings_tab import SettingsTab
 from src.gui.templates_tab import TemplatesTab
-from src.models.contact_manager import ContactManager
-from src.models.database import Database
-from src.security.validation import InputValidator
+from src.services.app_services import initialize_core_services
 from src.utils.logger import get_logger
 
 logger = get_logger("freesms.gui")
@@ -178,23 +169,7 @@ class SMSApplication(QMainWindow):
 
     def _initialize_services(self):
         """Initialize application services"""
-        # Database connection
-        self.db = Database()
-
-        # SMS service manager
-        self.service_manager = SMSServiceManager(self.db)
-
-        # Contact manager
-        self.contact_manager = ContactManager(self.db)
-
-        # Message scheduler
-        self.scheduler = MessageScheduler(self.db, self.service_manager)
-
-        # Input validator
-        self.validator = InputValidator()
-
-        # Start the scheduler
-        self.scheduler.start()
+        initialize_core_services(self)
 
         # Register scheduler callbacks
         self.scheduler.register_callback(
@@ -265,18 +240,20 @@ class SMSApplication(QMainWindow):
                 status_text = self._build_service_status_text()
                 self.service_status_changed.emit(status_text)
                 time.sleep(5)  # Update every 5 seconds
-            except Exception as exc:
+            except (OSError, RuntimeError, AttributeError) as exc:
                 logger.debug("Background status update error: %s", exc)
                 time.sleep(5)
 
     def _build_service_status_text(self) -> str:
         """Build the service status label text (safe to call from worker threads)."""
-        service = self.service_manager.get_active_service()
-        if not service:
+        if not (service := self.service_manager.get_active_service()):
             return "No SMS service configured"
 
         quota = service.get_remaining_quota()
-        return f"Service: {service.service_name} | Remaining: {quota}/{service.daily_limit}"
+        return (
+            f"Service: {service.service_name} | "
+            f"Remaining: {quota}/{service.daily_limit}"
+        )
 
     def service_status_label_set_text(self, text: str) -> None:
         """Update the service status label on the main thread."""
@@ -306,12 +283,14 @@ class SMSApplication(QMainWindow):
 
     def _update_after_scheduled_send(self, data):
         """Update UI after scheduled message is sent"""
-        self.set_status(f"Scheduled message to {data['recipient']} sent successfully")
+        recipient = data.get("recipient", "unknown")
+        self.set_status(f"Scheduled message to {recipient} sent successfully")
 
         # Refresh relevant tabs if they're currently visible
         current_index = self.tab_widget.currentIndex()
-        current_tab_text = self.tab_widget.tabText(current_index)
-        if current_tab_text == "Message History":
+        if (
+            current_tab_text := self.tab_widget.tabText(current_index)
+        ) == "Message History":
             self.tabs["history"].load_history()
         elif current_tab_text == "Scheduler":
             self.tabs["schedule"].load_scheduled_messages()
@@ -322,14 +301,12 @@ class SMSApplication(QMainWindow):
 
     def _update_after_scheduled_failure(self, data):
         """Update UI after scheduled message fails"""
-        self.set_status(
-            f"Failed to send scheduled message to {data['recipient']}: {data.get('error', 'Unknown error')}"
-        )
+        recipient = data.get("recipient", "unknown")
+        error = data.get("error", "Unknown error")
+        self.set_status(f"Failed to send scheduled message to {recipient}: {error}")
 
         # Refresh scheduler tab if visible
-        current_index = self.tab_widget.currentIndex()
-        current_tab_text = self.tab_widget.tabText(current_index)
-        if current_tab_text == "Scheduler":
+        if self.tab_widget.tabText(self.tab_widget.currentIndex()) == "Scheduler":
             self.tabs["schedule"].load_scheduled_messages()
 
     def send_message(self, recipient, message, service_name=None):
@@ -360,8 +337,8 @@ class SMSApplication(QMainWindow):
             response = self.service_manager.send_sms(recipient, message, service_name)
             self.send_response_ready.emit(response, recipient)
 
-        except Exception as e:
-            self.send_error_ready.emit(str(e), recipient)
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            self.send_error_ready.emit(str(exc), recipient)
 
     def _handle_send_response(self, response, recipient):
         """Handle send message response"""
@@ -397,8 +374,7 @@ class SMSApplication(QMainWindow):
 
     def load_contact_to_message(self, contact_id):
         """Load a contact into the message tab"""
-        contact = self.contact_manager.get_contact(contact_id)
-        if contact:
+        if contact := self.contact_manager.get_contact(contact_id):
             # Switch to message tab
             self.tab_widget.setCurrentIndex(0)
 
@@ -417,7 +393,7 @@ class SMSApplication(QMainWindow):
 
             # Close database connection
             self.db.close()
-        except Exception as exc:
+        except (OSError, RuntimeError, AttributeError) as exc:
             logger.error("Error during shutdown: %s", exc)
 
         # Accept the close event
@@ -426,6 +402,18 @@ class SMSApplication(QMainWindow):
 
 def main() -> None:
     """GUI entry point for setuptools freesms-gui script."""
-    from src.main import main as app_main
+    import sys
 
-    app_main()
+    from PySide6.QtWidgets import QApplication
+
+    from src.services.config_service import ConfigService
+    from src.services.notification_service import NotificationService
+
+    qt_app = QApplication(sys.argv)
+    qt_app.setApplicationName("FreeSMS")
+
+    config = ConfigService("freesms")
+    notification = NotificationService("FreeSMS")
+    main_window = SMSApplication(config=config, notification=notification)
+    main_window.show()
+    sys.exit(qt_app.exec())

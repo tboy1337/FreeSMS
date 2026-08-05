@@ -3,15 +3,17 @@ Icon generator for SMS application
 """
 
 import os
-import sys
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
 
 def generate_sms_icon(
-    output_path, size=256, background_color=(74, 108, 212), text_color=(255, 255, 255)
-):
+    output_path: str | Path,
+    size: int = 256,
+    background_color: tuple[int, int, int] = (74, 108, 212),
+    text_color: tuple[int, int, int] = (255, 255, 255),
+) -> str | Path:
     """
     Generate a simple SMS icon
 
@@ -20,6 +22,9 @@ def generate_sms_icon(
         size: Icon size in pixels
         background_color: Background color as RGB tuple
         text_color: Text color as RGB tuple
+
+    Returns:
+        Path where the icon was saved
     """
     # Validate input parameters
     if size <= 0:
@@ -29,8 +34,8 @@ def generate_sms_icon(
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
     # Create a new image with the specified background color
-    img = Image.new("RGB", (size, size), background_color)
-    draw = ImageDraw.Draw(img)
+    image = Image.new("RGB", (size, size), background_color)
+    draw = ImageDraw.Draw(image)
 
     # Calculate speech bubble dimensions
     padding = size // 8
@@ -121,8 +126,20 @@ def generate_sms_icon(
         )
 
     # Save the image
-    img.save(output_path)
+    image.save(output_path)
     return output_path
+
+
+def _generate_ico_from_png(png_path: Path, output_dir: Path) -> None:
+    """Generate ICO format from an existing PNG icon."""
+    with Image.open(png_path) as source_image:
+        ico_path = output_dir / "sms_icon.ico"
+        source_image.save(
+            ico_path,
+            format="ICO",
+            sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)],
+        )
+        print(f"ICO generated at: {ico_path}")
 
 
 if __name__ == "__main__":
@@ -138,15 +155,6 @@ if __name__ == "__main__":
 
     # Also generate ICO format for Windows
     try:
-        from PIL import Image
-
-        img = Image.open(icon_path)
-        ico_path = assets_dir / "sms_icon.ico"
-        img.save(
-            ico_path,
-            format="ICO",
-            sizes=[(256, 256), (128, 128), (64, 64), (32, 32), (16, 16)],
-        )
-        print(f"ICO generated at: {ico_path}")
-    except Exception as e:
-        print(f"Failed to generate ICO: {e}")
+        _generate_ico_from_png(icon_path, assets_dir)
+    except (OSError, ValueError, TypeError) as exc:
+        print(f"Failed to generate ICO: {exc}")

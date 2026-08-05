@@ -160,7 +160,7 @@ def setup_gui_test(qtbot):
     db.get_contacts.return_value = []
     db.get_message_history.return_value = []
     db.get_scheduled_messages.return_value = []
-    db.get_templates.return_value = []
+    db.get_message_templates.return_value = []
 
     # Create a temporary directory for config files
     temp_dir = tempfile.TemporaryDirectory()
@@ -556,7 +556,7 @@ class TestSMSApplicationGUI:
         # Create mock app
         mock_app = MagicMock()
         mock_app.db = setup["db"]
-        setup["db"].get_templates.return_value = [
+        setup["db"].get_message_templates.return_value = [
             {"id": 1, "name": "Test Template", "content": "Hello {name}!"}
         ]
 

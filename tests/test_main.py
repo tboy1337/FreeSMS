@@ -406,7 +406,7 @@ class TestMainExecution:
         mock_main.assert_called()
 
     @patch("sys.exit")
-    @patch("src.main.SMSApplication")
+    @patch("src.gui.app.SMSApplication")
     @patch("src.main.NotificationService")
     @patch("src.main.ConfigService")
     @patch("src.main.QApplication")
@@ -461,7 +461,7 @@ class TestMainExecution:
         # Verify Qt application setup
         mock_qapp.assert_called_once_with(sys.argv)
         mock_qt_app.setApplicationName.assert_called_once_with("FreeSMS")
-        mock_qt_app.setApplicationVersion.assert_called_once_with("1.0.5")
+        mock_qt_app.setApplicationVersion.assert_called_once_with("1.0.6")
 
         # Verify main window creation and shown (not minimized)
         mock_sms_app.assert_called_once_with(
@@ -475,7 +475,7 @@ class TestMainExecution:
         mock_exit.assert_called_once()
 
     @patch("sys.exit")
-    @patch("src.main.SMSApplication")
+    @patch("src.gui.app.SMSApplication")
     @patch("src.main.NotificationService")
     @patch("src.main.ConfigService")
     @patch("src.main.QApplication")
@@ -520,7 +520,7 @@ class TestMainExecution:
         )
 
     @patch("sys.exit")
-    @patch("src.main.SMSApplication")
+    @patch("src.gui.app.SMSApplication")
     @patch("src.main.NotificationService")
     @patch("src.main.ConfigService")
     @patch("src.main.QApplication")
@@ -565,7 +565,7 @@ class TestMainExecution:
 
     @patch("os.path.exists")
     @patch("sys.exit")
-    @patch("src.main.SMSApplication")
+    @patch("src.gui.app.SMSApplication")
     @patch("src.main.NotificationService")
     @patch("src.main.ConfigService")
     @patch("src.main.QApplication")
@@ -616,7 +616,7 @@ class TestMainExecution:
 
     @patch("os.path.exists")
     @patch("sys.exit")
-    @patch("src.main.SMSApplication")
+    @patch("src.gui.app.SMSApplication")
     @patch("src.main.NotificationService")
     @patch("src.main.ConfigService")
     @patch("src.main.QApplication")
@@ -661,7 +661,7 @@ class TestMainExecution:
         mock_qt_app.setWindowIcon.assert_not_called()
 
     @patch("sys.exit")
-    @patch("src.main.SMSApplication")
+    @patch("src.gui.app.SMSApplication")
     @patch("src.main.NotificationService")
     @patch("src.main.ConfigService")
     @patch("src.main.QApplication")
@@ -706,7 +706,7 @@ class TestMainExecution:
             assert warning_args[0] == "Failed to set application icon: %s"
 
     @patch("sys.exit")
-    @patch("src.main.SMSApplication")
+    @patch("src.gui.app.SMSApplication")
     @patch("src.main.NotificationService")
     @patch("src.main.ConfigService")
     @patch("src.main.QApplication")

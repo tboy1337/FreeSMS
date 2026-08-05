@@ -10,8 +10,6 @@ import os
 import sys
 from datetime import datetime
 
-import phonenumbers
-import pycountry
 from tabulate import tabulate
 
 # Add the project root to the Python path if it's not already there
@@ -21,18 +19,15 @@ project_root = os.path.dirname(
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from src.api.service_manager import SMSServiceManager
-from src.automation.scheduler import MessageScheduler
-from src.models.contact_manager import ContactManager
-from src.models.database import Database
-from src.security.validation import InputValidator
-from src.utils.logger import get_logger, setup_logger
+from src.cli.parser import build_parser
+from src.services.app_services import initialize_core_services
+from src.utils.logger import setup_logger
 
 
 class SMSCommandLineInterface:
     """Command line interface for FreeSMS application"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the CLI application"""
         # Set up logger
         self.logger = setup_logger("freesms_cli")
@@ -40,27 +35,16 @@ class SMSCommandLineInterface:
         # Initialize services
         self._initialize_services()
 
-    def _initialize_services(self):
+    def _initialize_services(self) -> None:
         """Initialize application services"""
-        # Database connection
-        self.db = Database()
+        initialize_core_services(self)
 
-        # SMS service manager
-        self.service_manager = SMSServiceManager(self.db)
-
-        # Contact manager
-        self.contact_manager = ContactManager(self.db)
-
-        # Message scheduler
-        self.scheduler = MessageScheduler(self.db, self.service_manager)
-
-        # Input validator
-        self.validator = InputValidator()
-
-        # Start the scheduler
-        self.scheduler.start()
-
-    def send_message(self, recipient, message, service_name=None):
+    def send_message(
+        self,
+        recipient: str,
+        message: str,
+        service_name: str | None = None,
+    ) -> bool:
         """
         Send an SMS message
 
@@ -81,26 +65,20 @@ class SMSCommandLineInterface:
             return False
 
         # Send message
-        try:
-            print(f"Sending message to {recipient}...")
-            response = self.service_manager.send_sms(recipient, message, service_name)
+        print(f"Sending message to {recipient}...")
+        response = self.service_manager.send_sms(recipient, message, service_name)
 
-            if response.success:
-                print("Message sent successfully!")
-                print(f"Message ID: {response.message_id}")
-                return True
-            else:
-                print(f"Failed to send message: {response.error}")
-                return False
-        except Exception as e:
-            print(f"Error sending message: {e}")
-            return False
+        if response.success:
+            print("Message sent successfully!")
+            print(f"Message ID: {response.message_id}")
+            return True
 
-    def list_contacts(self):
+        print(f"Failed to send message: {response.error}")
+        return False
+
+    def list_contacts(self) -> None:
         """List all contacts in the database"""
-        contacts = self.db.get_contacts()
-
-        if not contacts:
+        if not (contacts := self.db.get_contacts()):
             print("No contacts found.")
             return
 
@@ -121,7 +99,13 @@ class SMSCommandLineInterface:
         headers = ["ID", "Name", "Phone", "Country", "Notes"]
         print(tabulate(table_data, headers=headers, tablefmt="grid"))
 
-    def add_contact(self, name, phone, country=None, notes=None):
+    def add_contact(
+        self,
+        name: str,
+        phone: str,
+        country: str | None = None,
+        notes: str | None = None,
+    ) -> bool:
         """
         Add a new contact
 
@@ -147,16 +131,14 @@ class SMSCommandLineInterface:
                 return False
 
         # Add contact
-        result = self.db.save_contact(name, phone, country or "", notes or "")
-
-        if result:
-            print(f"Contact '{name}' added successfully")
+        if _ := self.db.save_contact(name, phone, country or "", notes or ""):
+            print(f"Contact {name} added successfully")
             return True
-        else:
-            print("Failed to add contact")
-            return False
 
-    def delete_contact(self, contact_id):
+        print("Failed to add contact")
+        return False
+
+    def delete_contact(self, contact_id: str | int) -> bool:
         """
         Delete a contact
 
@@ -168,31 +150,27 @@ class SMSCommandLineInterface:
             return False
 
         # Get contact name for confirmation
-        contact = self.db.get_contact(int(contact_id))
-        if not contact:
+        if not (contact := self.db.get_contact(int(contact_id))):
             print(f"Error: Contact with ID {contact_id} not found")
             return False
 
         # Delete contact
-        result = self.db.delete_contact(int(contact_id))
-
-        if result:
-            print(f"Contact '{contact['name']}' deleted successfully")
+        if _ := self.db.delete_contact(int(contact_id)):
+            contact_name = contact["name"]
+            print(f"Contact {contact_name} deleted successfully")
             return True
-        else:
-            print("Failed to delete contact")
-            return False
 
-    def list_message_history(self, limit=20):
+        print("Failed to delete contact")
+        return False
+
+    def list_message_history(self, limit: int = 20) -> None:
         """
         List message history
 
         Args:
             limit: Maximum number of messages to show
         """
-        messages = self.db.get_message_history(limit)
-
-        if not messages:
+        if not (messages := self.db.get_message_history(limit)):
             print("No message history found.")
             return
 
@@ -221,13 +199,14 @@ class SMSCommandLineInterface:
 
     def schedule_message(
         self,
-        recipient,
-        message,
-        scheduled_time,
-        service=None,
-        recurring=None,
-        interval=None,
-    ):
+        recipient: str,
+        message: str,
+        scheduled_time: str,
+        *,
+        service: str | None = None,
+        recurring: str | None = None,
+        interval: int | None = None,
+    ) -> bool:
         """
         Schedule a message for later delivery
 
@@ -255,31 +234,30 @@ class SMSCommandLineInterface:
 
         # Validate the scheduled time format
         try:
-            # Try to parse the time
-            dt = datetime.fromisoformat(scheduled_time)
-
-            # Check if the time is in the future
-            if dt <= datetime.now():
+            if (dt := datetime.fromisoformat(scheduled_time)) <= datetime.now():
                 print("Error: Scheduled time must be in the future")
                 return False
-
-            # Format it consistently
-            scheduled_time = dt.strftime("%Y-%m-%d %H:%M:%S")
         except ValueError:
             print(
-                "Error: Invalid scheduled time format. Use ISO format (YYYY-MM-DDTHH:MM:SS)"
+                "Error: Invalid scheduled time format. "
+                "Use ISO format (YYYY-MM-DDTHH:MM:SS)"
             )
             return False
+
+        # Format it consistently
+        scheduled_time = dt.strftime("%Y-%m-%d %H:%M:%S")
 
         # Validate recurring parameters
         if recurring and not interval:
             print(
-                f"Warning: No interval specified for {recurring} recurrence. Using default interval of 1."
+                f"Warning: No interval specified for {recurring} recurrence. "
+                "Using default interval of 1."
             )
             interval = 1
         elif interval and not recurring:
             print(
-                "Warning: Interval specified but no recurrence type. Message will be sent once."
+                "Warning: Interval specified but no recurrence type. "
+                "Message will be sent once."
             )
             interval = None
 
@@ -287,15 +265,18 @@ class SMSCommandLineInterface:
         if recurring and interval:
             if recurring == "daily" and interval > 30:
                 print(
-                    f"Warning: Large interval ({interval} days) for daily recurrence."
+                    f"Warning: Large interval ({interval} days) "
+                    "for daily recurrence."
                 )
             elif recurring == "weekly" and interval > 12:
                 print(
-                    f"Warning: Large interval ({interval} weeks) for weekly recurrence."
+                    f"Warning: Large interval ({interval} weeks) "
+                    "for weekly recurrence."
                 )
             elif recurring == "monthly" and interval > 12:
                 print(
-                    f"Warning: Large interval ({interval} months) for monthly recurrence."
+                    f"Warning: Large interval ({interval} months) "
+                    "for monthly recurrence."
                 )
 
         # Add scheduled message via scheduler
@@ -316,27 +297,29 @@ class SMSCommandLineInterface:
             if message_id:
                 print(f"Message scheduled successfully for {scheduled_time}")
                 if recurring:
+                    recur_unit = (
+                        recurring[:-2] if recurring.endswith("ly") else recurring
+                    )
                     print(
-                        f"This message will recur {recurring} every {interval} {recurring[:-2] if recurring.endswith('ly') else recurring}"
+                        f"This message will recur {recurring} "
+                        f"every {interval} {recur_unit}"
                     )
                 return True
-            else:
-                print("Failed to schedule message")
-                return False
-        except Exception as e:
-            print(f"Error scheduling message: {e}")
+
+            print("Failed to schedule message")
+            return False
+        except (OSError, RuntimeError, ValueError, TypeError) as exc:
+            print(f"Error scheduling message: {exc}")
             return False
 
-    def list_scheduled_messages(self, include_completed=False):
+    def list_scheduled_messages(self, include_completed: bool = False) -> None:
         """
         List scheduled messages
 
         Args:
             include_completed: Whether to include completed messages
         """
-        messages = self.db.get_scheduled_messages(include_completed)
-
-        if not messages:
+        if not (messages := self.db.get_scheduled_messages(include_completed)):
             print("No scheduled messages found.")
             return
 
@@ -356,11 +339,13 @@ class SMSCommandLineInterface:
                     try:
                         interval_data = json.loads(interval_info)
                         if "days_interval" in interval_data:
-                            interval_info = f"{interval_data['days_interval']} days"
+                            days = interval_data["days_interval"]
+                            interval_info = f"{days} days"
                     except json.JSONDecodeError:
                         pass
 
-                recurring_info = f"{msg['recurring']} (every {interval_info})"
+                recurring_type = msg["recurring"]
+                recurring_info = f"{recurring_type} (every {interval_info})"
 
             table_data.append(
                 [
@@ -384,7 +369,7 @@ class SMSCommandLineInterface:
         ]
         print(tabulate(table_data, headers=headers, tablefmt="grid"))
 
-    def cancel_scheduled_message(self, message_id):
+    def cancel_scheduled_message(self, message_id: str | int) -> bool:
         """
         Cancel a scheduled message
 
@@ -398,26 +383,20 @@ class SMSCommandLineInterface:
         # Cancel the scheduled message using the scheduler
         try:
             message_id = int(message_id)
-            result = self.scheduler.cancel_scheduled_message(message_id)
-
-            if result:
-                print(f"Scheduled message {message_id} cancelled successfully")
-                return True
-            else:
-                print(f"Failed to cancel scheduled message {message_id}")
-                return False
         except ValueError:
-            print(f"Error: Invalid message ID format")
-            return False
-        except Exception as e:
-            print(f"Error cancelling scheduled message: {e}")
+            print("Error: Invalid message ID format")
             return False
 
-    def list_templates(self):
+        if _ := self.scheduler.cancel_scheduled_message(message_id):
+            print(f"Scheduled message {message_id} cancelled successfully")
+            return True
+
+        print(f"Failed to cancel scheduled message {message_id}")
+        return False
+
+    def list_templates(self) -> None:
         """List message templates"""
-        templates = self.db.get_templates()
-
-        if not templates:
+        if not (templates := self.db.get_message_templates()):
             print("No message templates found.")
             return
 
@@ -435,7 +414,7 @@ class SMSCommandLineInterface:
         headers = ["ID", "Name", "Content"]
         print(tabulate(table_data, headers=headers, tablefmt="grid"))
 
-    def add_template(self, name, content):
+    def add_template(self, name: str, content: str) -> bool:
         """
         Add a new message template
 
@@ -448,16 +427,14 @@ class SMSCommandLineInterface:
             return False
 
         # Add template
-        result = self.db.save_template(name, content)
-
-        if result:
-            print(f"Template '{name}' added successfully")
+        if _ := self.db.save_message_template(name, content):
+            print(f"Template {name} added successfully")
             return True
-        else:
-            print("Failed to add template")
-            return False
 
-    def delete_template(self, template_id):
+        print("Failed to add template")
+        return False
+
+    def delete_template(self, template_id: str | int) -> bool:
         """
         Delete a message template
 
@@ -469,16 +446,14 @@ class SMSCommandLineInterface:
             return False
 
         # Delete template
-        result = self.db.delete_message_template(int(template_id))
-
-        if result:
+        if _ := self.db.delete_message_template(int(template_id)):
             print(f"Template {template_id} deleted successfully")
             return True
-        else:
-            print(f"Failed to delete template {template_id}")
-            return False
 
-    def list_services(self):
+        print(f"Failed to delete template {template_id}")
+        return False
+
+    def list_services(self) -> None:
         """List available SMS services"""
         # Get services
         available_services = self.service_manager.get_available_services()
@@ -504,7 +479,7 @@ class SMSCommandLineInterface:
         headers = ["Service", "Status"]
         print(tabulate(table_data, headers=headers, tablefmt="grid"))
 
-    def configure_service(self, service_name, credentials_json):
+    def configure_service(self, service_name: str, credentials_json: str) -> bool:
         """
         Configure an SMS service
 
@@ -524,7 +499,7 @@ class SMSCommandLineInterface:
             return False
 
         if not self.service_manager.get_service_by_name(service_name):
-            print(f"Error: Service '{service_name}' not found")
+            print(f"Error: Service {service_name} not found")
             return False
 
         result = self.service_manager.configure_service(
@@ -532,13 +507,13 @@ class SMSCommandLineInterface:
         )
 
         if result:
-            print(f"Service '{service_name}' configured successfully")
+            print(f"Service {service_name} configured successfully")
             return True
 
-        print(f"Failed to configure service '{service_name}'")
+        print(f"Failed to configure service {service_name}")
         return False
 
-    def set_active_service(self, service_name):
+    def set_active_service(self, service_name: str) -> bool:
         """
         Set the active SMS service
 
@@ -550,16 +525,14 @@ class SMSCommandLineInterface:
             return False
 
         # Set active service
-        result = self.service_manager.set_active_service(service_name)
-
-        if result:
-            print(f"Service '{service_name}' set as active")
+        if _ := self.service_manager.set_active_service(service_name):
+            print(f"Service {service_name} set as active")
             return True
-        else:
-            print(f"Failed to set service '{service_name}' as active")
-            return False
 
-    def test_service(self, service_name=None):
+        print(f"Failed to set service {service_name} as active")
+        return False
+
+    def test_service(self, service_name: str | None = None) -> bool:
         """
         Test an SMS service connection
 
@@ -575,16 +548,16 @@ class SMSCommandLineInterface:
             service_name = "active service" if service else None
 
         if not service:
-            print(
-                f"Error: {'No active service configured' if not service_name else f'Service {service_name} not found'}"
-            )
+            if not service_name:
+                print("Error: No active service configured")
+            else:
+                print(f"Error: Service {service_name} not found")
             return False
 
         print(f"Testing service: {service.service_name}")
 
         # Validate credentials
-        valid = service.validate_credentials()
-        if valid:
+        if service.validate_credentials():
             print("✓ Credentials are valid")
         else:
             print("✗ Invalid credentials")
@@ -600,35 +573,37 @@ class SMSCommandLineInterface:
             if isinstance(balance, dict) and not balance.get("error"):
                 print("✓ Account is active and in good standing")
                 if "balance" in balance:
-                    print(f"  Balance: {balance['balance']}")
+                    balance_amount = balance["balance"]
+                    print(f"  Balance: {balance_amount}")
                 if "quota" in balance:
-                    print(f"  Quota: {balance['quota']}")
+                    quota_amount = balance["quota"]
+                    print(f"  Quota: {quota_amount}")
             else:
                 error = balance.get("error", "Unknown error")
                 print(f"✗ Account issue: {error}")
                 return False
-        except Exception as e:
-            print(f"✗ Error checking account: {e}")
+        except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
+            print(f"✗ Error checking account: {exc}")
             return False
 
         print("Service test completed successfully!")
         return True
 
-    def shutdown(self):
+    def shutdown(self) -> None:
         """Shut down CLI resources"""
         try:
             if hasattr(self, "scheduler"):
                 self.scheduler.stop()
-        except Exception as exc:
+        except (OSError, RuntimeError) as exc:
             self.logger.error("Error stopping scheduler during shutdown: %s", exc)
 
         try:
             if hasattr(self, "db"):
                 self.db.close()
-        except Exception as exc:
+        except (OSError, RuntimeError) as exc:
             self.logger.error("Error closing database during shutdown: %s", exc)
 
-    def export_history(self, output_file, limit=1000):
+    def export_history(self, output_file: str, limit: int = 1000) -> bool:
         """
         Export message history to a CSV file
 
@@ -636,9 +611,7 @@ class SMSCommandLineInterface:
             output_file: Path to output CSV file
             limit: Maximum number of messages to export
         """
-        messages = self.db.get_message_history(limit)
-
-        if not messages:
+        if not (messages := self.db.get_message_history(limit)):
             print("No message history found to export.")
             return False
 
@@ -670,11 +643,11 @@ class SMSCommandLineInterface:
                     f"Successfully exported {len(messages)} messages to {output_file}"
                 )
                 return True
-        except Exception as e:
-            print(f"Error exporting message history: {e}")
+        except (OSError, csv.Error, ValueError) as exc:
+            print(f"Error exporting message history: {exc}")
             return False
 
-    def import_contacts(self, input_file):
+    def import_contacts(self, input_file: str) -> bool:
         """
         Import contacts from a CSV file
 
@@ -699,20 +672,18 @@ class SMSCommandLineInterface:
             print(f"Import complete: {imported} imported, {len(import_errors)} errors")
             return imported > 0
 
-        except Exception as e:
-            print(f"Error importing contacts: {e}")
+        except (OSError, csv.Error, ValueError) as exc:
+            print(f"Error importing contacts: {exc}")
             return False
 
-    def export_contacts(self, output_file):
+    def export_contacts(self, output_file: str) -> bool:
         """
         Export contacts to a CSV file
 
         Args:
             output_file: Path to output CSV file
         """
-        contacts = self.db.get_contacts()
-
-        if not contacts:
+        if not (contacts := self.db.get_contacts()):
             print("No contacts found to export.")
             return False
 
@@ -745,11 +716,11 @@ class SMSCommandLineInterface:
                     f"Successfully exported {len(contacts)} contacts to {output_file}"
                 )
                 return True
-        except Exception as e:
-            print(f"Error exporting contacts: {e}")
+        except (OSError, csv.Error, ValueError) as exc:
+            print(f"Error exporting contacts: {exc}")
             return False
 
-    def create_contacts_template(self, output_file):
+    def create_contacts_template(self, output_file: str) -> bool:
         """
         Create a template CSV file for contacts import
 
@@ -787,185 +758,9 @@ class SMSCommandLineInterface:
                 print("Edit this file with your contacts data and then import it with:")
                 print(f"  freesms-cli contacts import {output_file}")
                 return True
-        except Exception as e:
-            print(f"Error creating contacts template: {e}")
+        except (OSError, csv.Error, ValueError) as exc:
+            print(f"Error creating contacts template: {exc}")
             return False
-
-
-def build_parser() -> argparse.ArgumentParser:
-    """Build the CLI argument parser."""
-    parser = argparse.ArgumentParser(description="FreeSMS Command Line Interface")
-    subparsers = parser.add_subparsers(dest="command", help="Command to execute")
-
-    # Send message command
-    send_parser = subparsers.add_parser("send", help="Send an SMS message")
-    send_parser.add_argument("recipient", help="Recipient phone number")
-    send_parser.add_argument("message", help="Message content")
-    send_parser.add_argument(
-        "--service", help="Service to use (default: active service)"
-    )
-
-    # Contact commands
-    contacts_parser = subparsers.add_parser("contacts", help="Manage contacts")
-    contacts_subparsers = contacts_parser.add_subparsers(dest="subcommand")
-
-    # List contacts
-    contacts_list_parser = contacts_subparsers.add_parser(
-        "list", help="List all contacts"
-    )
-
-    # Add contact
-    contacts_add_parser = contacts_subparsers.add_parser(
-        "add", help="Add a new contact"
-    )
-    contacts_add_parser.add_argument("name", help="Contact name")
-    contacts_add_parser.add_argument("phone", help="Phone number")
-    contacts_add_parser.add_argument("--country", help="Country")
-    contacts_add_parser.add_argument("--notes", help="Additional notes")
-
-    # Delete contact
-    contacts_delete_parser = contacts_subparsers.add_parser(
-        "delete", help="Delete a contact"
-    )
-    contacts_delete_parser.add_argument("id", help="Contact ID")
-
-    # Import contacts from CSV
-    contacts_import_parser = contacts_subparsers.add_parser(
-        "import", help="Import contacts from CSV file"
-    )
-    contacts_import_parser.add_argument("input_file", help="Path to input CSV file")
-
-    # Export contacts to CSV
-    contacts_export_parser = contacts_subparsers.add_parser(
-        "export", help="Export contacts to CSV file"
-    )
-    contacts_export_parser.add_argument("output_file", help="Path to output CSV file")
-
-    # Create contacts template
-    contacts_template_parser = contacts_subparsers.add_parser(
-        "template", help="Create a template CSV file for contacts import"
-    )
-    contacts_template_parser.add_argument(
-        "output_file", help="Path to output template CSV file"
-    )
-
-    # History commands
-    history_parser = subparsers.add_parser("history", help="Message history")
-    history_subparsers = history_parser.add_subparsers(dest="subcommand")
-
-    # List history
-    history_list_parser = history_subparsers.add_parser(
-        "list", help="List message history"
-    )
-    history_list_parser.add_argument(
-        "--limit", type=int, default=20, help="Maximum number of messages to show"
-    )
-
-    # Export history
-    history_export_parser = history_subparsers.add_parser(
-        "export", help="Export message history to CSV"
-    )
-    history_export_parser.add_argument("output_file", help="Path to output CSV file")
-    history_export_parser.add_argument(
-        "--limit", type=int, default=1000, help="Maximum number of messages to export"
-    )
-
-    # Schedule commands
-    schedule_parser = subparsers.add_parser(
-        "schedule", help="Manage scheduled messages"
-    )
-    schedule_subparsers = schedule_parser.add_subparsers(dest="subcommand")
-
-    # List scheduled messages
-    schedule_list_parser = schedule_subparsers.add_parser(
-        "list", help="List scheduled messages"
-    )
-    schedule_list_parser.add_argument(
-        "--all", action="store_true", help="Include completed messages"
-    )
-
-    # Add scheduled message
-    schedule_add_parser = schedule_subparsers.add_parser(
-        "add", help="Schedule a new message"
-    )
-    schedule_add_parser.add_argument("recipient", help="Recipient phone number")
-    schedule_add_parser.add_argument("message", help="Message content")
-    schedule_add_parser.add_argument(
-        "time", help="Scheduled time in ISO format (YYYY-MM-DDTHH:MM:SS)"
-    )
-    schedule_add_parser.add_argument(
-        "--service", help="Service to use (default: active service)"
-    )
-    schedule_add_parser.add_argument(
-        "--recurring", choices=["daily", "weekly", "monthly"], help="Recurring schedule"
-    )
-    schedule_add_parser.add_argument(
-        "--interval", type=int, default=1, help="Interval for recurring messages"
-    )
-
-    # Cancel scheduled message
-    schedule_cancel_parser = schedule_subparsers.add_parser(
-        "cancel", help="Cancel a scheduled message"
-    )
-    schedule_cancel_parser.add_argument("id", help="Scheduled message ID")
-
-    # Template commands
-    templates_parser = subparsers.add_parser(
-        "templates", help="Manage message templates"
-    )
-    templates_subparsers = templates_parser.add_subparsers(dest="subcommand")
-
-    # List templates
-    templates_list_parser = templates_subparsers.add_parser(
-        "list", help="List all templates"
-    )
-
-    # Add template
-    templates_add_parser = templates_subparsers.add_parser(
-        "add", help="Add a new template"
-    )
-    templates_add_parser.add_argument("name", help="Template name")
-    templates_add_parser.add_argument("content", help="Template content")
-
-    # Delete template
-    templates_delete_parser = templates_subparsers.add_parser(
-        "delete", help="Delete a template"
-    )
-    templates_delete_parser.add_argument("id", help="Template ID")
-
-    # Service commands
-    services_parser = subparsers.add_parser("services", help="Manage SMS services")
-    services_subparsers = services_parser.add_subparsers(dest="subcommand")
-
-    # List services
-    services_list_parser = services_subparsers.add_parser(
-        "list", help="List available services"
-    )
-
-    # Configure service
-    services_configure_parser = services_subparsers.add_parser(
-        "configure", help="Configure a service"
-    )
-    services_configure_parser.add_argument("name", help="Service name")
-    services_configure_parser.add_argument(
-        "credentials", help="Service credentials (JSON)"
-    )
-
-    # Set active service
-    services_activate_parser = services_subparsers.add_parser(
-        "activate", help="Set active service"
-    )
-    services_activate_parser.add_argument("name", help="Service name")
-
-    # Test service
-    services_test_parser = services_subparsers.add_parser(
-        "test", help="Test an SMS service connection"
-    )
-    services_test_parser.add_argument(
-        "--name", help="Service name (default: active service)"
-    )
-
-    return parser
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -1029,9 +824,9 @@ def main() -> int:
                         args.recipient,
                         args.message,
                         args.time,
-                        args.service,
-                        args.recurring,
-                        args.interval,
+                        service=args.service,
+                        recurring=args.recurring,
+                        interval=args.interval,
                     )
                 )
             elif args.subcommand == "cancel":
@@ -1061,7 +856,7 @@ def main() -> int:
             else:
                 cli.list_services()
 
-    except Exception as exc:
+    except (OSError, RuntimeError, ValueError, TypeError, AttributeError) as exc:
         cli.logger.exception("CLI error: %s", exc)
         print(f"Error: {exc}")
         exit_code = 1

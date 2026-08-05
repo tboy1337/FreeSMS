@@ -3,6 +3,7 @@ History Tab - UI for viewing message history
 """
 
 from datetime import datetime
+from typing import Any
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
@@ -34,6 +35,7 @@ class HistoryTab(QWidget):
         """Initialize the history tab"""
         super().__init__()
         self.app = app
+        self.current_message: dict[str, Any] | None = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -159,7 +161,7 @@ class HistoryTab(QWidget):
                     and status_filter.lower() != message["status"].lower()
                 ):
                     continue
-                if service_filter != "All" and service_filter != message["service"]:
+                if service_filter not in ("All", message["service"]):
                     continue
 
                 filtered_messages.append(message)
@@ -171,8 +173,7 @@ class HistoryTab(QWidget):
                 self.service_combo.addItem(service)
 
             # Restore selection if possible
-            index = self.service_combo.findText(current_service)
-            if index >= 0:
+            if (index := self.service_combo.findText(current_service)) >= 0:
                 self.service_combo.setCurrentIndex(index)
 
             # Update count
@@ -183,8 +184,7 @@ class HistoryTab(QWidget):
 
             for row, message in enumerate(filtered_messages):
                 # Format date/time
-                sent_at = message["sent_at"]
-                if sent_at:
+                if sent_at := message["sent_at"]:
                     try:
                         dt = datetime.strptime(sent_at, "%Y-%m-%d %H:%M:%S")
                         sent_at = dt.strftime("%Y-%m-%d %H:%M")
@@ -206,23 +206,20 @@ class HistoryTab(QWidget):
                 self.history_table.setItem(row, 3, QTableWidgetItem(message["service"]))
                 self.history_table.setItem(row, 4, QTableWidgetItem(str(sent_at)))
 
-        except Exception as e:
-            logger.exception("Failed to load history: %s", e)
-            QMessageBox.critical(self, "Error", f"Failed to load history: {str(e)}")
+        except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+            logger.exception("Failed to load history: %s", exc)
+            QMessageBox.critical(self, "Error", f"Failed to load history: {exc!s}")
 
     def _on_message_selected(self, index):
         """Handle message selection via double-click"""
         row = index.row()
-        recipient_item = self.history_table.item(row, 0)
-        if not recipient_item:
+        if not (recipient_item := self.history_table.item(row, 0)):
             return
 
         message_id = recipient_item.data(Qt.ItemDataRole.UserRole)
 
         try:
-            message = self.app.db.get_message_history_by_id(message_id)
-
-            if message:
+            if message := self.app.db.get_message_history_by_id(message_id):
                 self.current_message = message
 
                 self.detail_recipient.setText(message["recipient"])
@@ -230,8 +227,7 @@ class HistoryTab(QWidget):
                 self.detail_service.setText(message["service"])
 
                 # Format date
-                sent_at = message["sent_at"]
-                if sent_at:
+                if sent_at := message["sent_at"]:
                     try:
                         dt = datetime.strptime(sent_at, "%Y-%m-%d %H:%M:%S")
                         sent_at = dt.strftime("%Y-%m-%d %H:%M:%S")
@@ -246,19 +242,20 @@ class HistoryTab(QWidget):
 
                 self.resend_button.setEnabled(True)
 
-        except Exception as e:
-            logger.exception("Failed to load message details: %s", e)
+        except (OSError, RuntimeError, KeyError, TypeError, ValueError) as exc:
+            logger.exception("Failed to load message details: %s", exc)
             QMessageBox.critical(
-                self, "Error", f"Failed to load message details: {str(e)}"
+                self, "Error", f"Failed to load message details: {exc!s}"
             )
 
     def _on_resend(self):
         """Resend the selected message"""
-        if hasattr(self, "current_message") and self.current_message:
+        if self.current_message:
+            recipient = self.current_message.get("recipient", "")
             reply = QMessageBox.question(
                 self,
                 "Confirm Resend",
-                f"Resend this message to {self.current_message['recipient']}?",
+                f"Resend this message to {recipient}?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
 
@@ -284,5 +281,4 @@ class HistoryTab(QWidget):
 
         self.resend_button.setEnabled(False)
 
-        if hasattr(self, "current_message"):
-            delattr(self, "current_message")
+        self.current_message = None

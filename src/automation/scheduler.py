@@ -5,8 +5,9 @@ Message Scheduler - Handles scheduled and recurring messages
 import json
 import threading
 import time
+from collections.abc import Callable
 from datetime import datetime, timedelta
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import schedule
 
@@ -27,7 +28,7 @@ class MessageScheduler:
         self.running = False
         self.scheduler_thread = None
         self.lock = threading.Lock()
-        self.callbacks = {}
+        self.callbacks: dict[str, list[Callable[[dict[str, Any]], None]]] = {}
 
         # Initialize the scheduler
         self._initialize_scheduler()
@@ -64,7 +65,7 @@ class MessageScheduler:
     def check_due_messages(self):
         """Check for and send any due scheduled messages"""
         with self.lock:
-            due_messages = self.db.get_due_scheduled_messages()
+            due_messages = self.db.get_pending_scheduled_messages()
 
         for message in due_messages:
             self._process_scheduled_message(message)
@@ -78,6 +79,7 @@ class MessageScheduler:
 
     def _process_scheduled_message(self, message):
         """Process a single scheduled message"""
+        message_id = None
         try:
             # Check if the message object is valid
             if not message or not isinstance(message, dict):
@@ -103,15 +105,14 @@ class MessageScheduler:
                     or not scheduled_time_str
                 ):
                     raise ValueError(
-                        f"Missing required message fields: message_id={message_id}, recipient={recipient}, message_text={message_text is not None}, scheduled_time={scheduled_time_str is not None}"
+                        "Missing required message fields: "
+                        f"message_id={message_id}, recipient={recipient}, "
+                        f"message_text={message_text is not None}, "
+                        f"scheduled_time={scheduled_time_str is not None}"
                     )
 
-                # Parse schedule time
-                schedule_time = datetime.strptime(
-                    scheduled_time_str, "%Y-%m-%d %H:%M:%S"
-                )
-                recurrence = message.get("recurring")
-                recurrence_data = message.get("recurring_interval")
+                # Validate schedule time format
+                datetime.strptime(scheduled_time_str, "%Y-%m-%d %H:%M:%S")
             except (KeyError, ValueError, TypeError) as exc:
                 logger.warning("Invalid message data: %s", exc)
                 # Mark message as failed due to data error
@@ -128,7 +129,7 @@ class MessageScheduler:
 
             if response.success:
                 # If it's a recurring message, update its next schedule time
-                if recurrence:
+                if message.get("recurring"):
                     self._update_recurring_message(message)
                 else:
                     # For one-time messages, mark as completed
@@ -166,7 +167,7 @@ class MessageScheduler:
                 )
 
             return True
-        except Exception as exc:
+        except (OSError, RuntimeError, KeyError, ValueError, TypeError) as exc:
             logger.error("Error processing scheduled message: %s", exc)
             # Try to mark the message as failed if we can get the ID
             try:
@@ -174,7 +175,17 @@ class MessageScheduler:
                     self.db.update_scheduled_message_status(
                         message_id=message["id"], status="failed"
                     )
-            except Exception as mark_exc:
+            except (OSError, RuntimeError, KeyError, ValueError, TypeError) as mark_exc:
+                logger.debug("Failed to mark scheduled message as failed: %s", mark_exc)
+            return False
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.error("Error processing scheduled message: %s", exc)
+            try:
+                if message and isinstance(message, dict) and "id" in message:
+                    self.db.update_scheduled_message_status(
+                        message_id=message["id"], status="failed"
+                    )
+            except Exception as mark_exc:  # pylint: disable=broad-exception-caught
                 logger.debug("Failed to mark scheduled message as failed: %s", mark_exc)
             return False
 
@@ -226,9 +237,7 @@ class MessageScheduler:
                     next_schedule_time = schedule_time.replace(
                         year=next_year, month=next_month, day=28
                     )
-                    if next_year % 4 == 0 and (
-                        next_year % 100 != 0 or next_year % 400 == 0
-                    ):
+                    if not next_year % 4 and (next_year % 100 or not next_year % 400):
                         next_schedule_time = schedule_time.replace(
                             year=next_year, month=next_month, day=29
                         )
@@ -266,10 +275,11 @@ class MessageScheduler:
         recipient: str,
         message: str,
         schedule_time: datetime,
-        recurrence: Optional[str] = None,
-        recurrence_data: Optional[Dict[str, Any]] = None,
-        service: Optional[str] = None,
-    ) -> Optional[int]:
+        *,
+        recurrence: str | None = None,
+        recurrence_data: dict[str, Any] | None = None,
+        service: str | None = None,
+    ) -> int | None:
         """Schedule a new message for sending"""
         with self.lock:
             # Format the datetime for SQLite
@@ -302,9 +312,7 @@ class MessageScheduler:
     def cancel_scheduled_message(self, message_id: int) -> bool:
         """Cancel a scheduled message"""
         with self.lock:
-            success = self.db.delete_scheduled_message(message_id)
-
-            if success:
+            if success := self.db.delete_scheduled_message(message_id):
                 # Trigger callback for message cancelled
                 self._trigger_callback("message_cancelled", {"message_id": message_id})
 
@@ -313,12 +321,13 @@ class MessageScheduler:
     def update_scheduled_message(
         self,
         message_id: int,
-        recipient: Optional[str] = None,
-        message: Optional[str] = None,
-        schedule_time: Optional[datetime] = None,
-        recurrence: Optional[str] = None,
-        recurrence_data: Optional[Dict[str, Any]] = None,
-        service: Optional[str] = None,
+        *,
+        recipient: str | None = None,
+        message: str | None = None,
+        schedule_time: datetime | None = None,
+        recurrence: str | None = None,
+        recurrence_data: dict[str, Any] | None = None,
+        service: str | None = None,
     ) -> bool:
         """Update an existing scheduled message"""
         with self.lock:
@@ -358,9 +367,7 @@ class MessageScheduler:
 
             return result
 
-    def get_scheduled_messages(
-        self, status: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+    def get_scheduled_messages(self, status: str | None = None) -> list[dict[str, Any]]:
         """Get scheduled messages with optional status filter"""
         with self.lock:
             messages = self.db.get_scheduled_messages()
@@ -385,18 +392,20 @@ class MessageScheduler:
             return messages
 
     def register_callback(
-        self, event_type: str, callback: Callable[[Dict[str, Any]], None]
+        self, event_type: str, callback: Callable[[dict[str, Any]], None]
     ):
         """Register a callback for scheduler events"""
         if event_type not in self.callbacks:
             self.callbacks[event_type] = []
         self.callbacks[event_type].append(callback)
 
-    def _trigger_callback(self, event_type: str, data: Dict[str, Any]):
+    def _trigger_callback(self, event_type: str, data: dict[str, Any]):
         """Trigger registered callbacks for an event"""
         if event_type in self.callbacks:
             for callback in self.callbacks[event_type]:
                 try:
                     callback(data)
-                except Exception as exc:
+                except (TypeError, ValueError, KeyError, RuntimeError) as exc:
+                    logger.error("Error in scheduler callback: %s", exc)
+                except Exception as exc:  # pylint: disable=broad-exception-caught
                     logger.error("Error in scheduler callback: %s", exc)

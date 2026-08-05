@@ -4,7 +4,7 @@ Contact Manager - Handles operations on contacts
 
 import csv
 import io
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import phonenumbers
 
@@ -27,12 +27,12 @@ class ContactManager:
 
         return self.db.save_contact(name, formatted, country, notes)
 
-    def get_all_contacts(self) -> List[Dict[str, Any]]:
+    def get_all_contacts(self) -> list[dict[str, Any]]:
         """Get all contacts"""
         contacts = self.db.get_contacts()
         return [dict(contact) for contact in contacts]
 
-    def get_contact(self, contact_id: int) -> Optional[Dict[str, Any]]:
+    def get_contact(self, contact_id: int) -> dict[str, Any] | None:
         """Get a contact by ID"""
         contact = self.db.get_contact(contact_id)
         return dict(contact) if contact else None
@@ -40,15 +40,14 @@ class ContactManager:
     def update_contact(
         self,
         contact_id: int,
-        name: Optional[str] = None,
-        phone: Optional[str] = None,
-        country: Optional[str] = None,
-        notes: Optional[str] = None,
+        name: str | None = None,
+        phone: str | None = None,
+        country: str | None = None,
+        notes: str | None = None,
     ) -> bool:
         """Update a contact"""
         # Get current contact
-        current = self.db.get_contact(contact_id)
-        if not current:
+        if not (current := self.db.get_contact(contact_id)):
             return False
 
         # Use current values if not provided
@@ -70,12 +69,12 @@ class ContactManager:
         """Delete a contact"""
         return self.db.delete_contact(contact_id)
 
-    def search_contacts(self, query: str) -> List[Dict[str, Any]]:
+    def search_contacts(self, query: str) -> list[dict[str, Any]]:
         """Search contacts by name or phone number"""
         contacts = self.db.search_contacts(query)
         return [dict(contact) for contact in contacts]
 
-    def import_contacts_from_csv(self, csv_data: str) -> Tuple[int, List[str]]:
+    def import_contacts_from_csv(self, csv_data: str) -> tuple[int, list[str]]:
         """Import contacts from CSV data"""
         success_count = 0
         errors = []
@@ -86,8 +85,7 @@ class ContactManager:
         required_fields = ["name", "phone"]
 
         # Check if required fields are present
-        fieldnames = reader.fieldnames
-        if not fieldnames:
+        if not (fieldnames := reader.fieldnames):
             return 0, ["Invalid CSV format: No header row found"]
 
         for field in required_fields:
@@ -136,8 +134,7 @@ class ContactManager:
 
     def export_contacts_to_csv(self) -> str:
         """Export all contacts to CSV format"""
-        contacts = self.get_all_contacts()
-        if not contacts:
+        if not (contacts := self.get_all_contacts()):
             return "name,phone,country,notes\n"
 
         output = io.StringIO()
@@ -161,7 +158,7 @@ class ContactManager:
 
         return output.getvalue()
 
-    def _validate_phone_number(self, phone: str, country: str) -> Tuple[bool, str]:
+    def _validate_phone_number(self, phone: str, country: str) -> tuple[bool, str]:
         """Validate and format a phone number"""
         try:
             region = (

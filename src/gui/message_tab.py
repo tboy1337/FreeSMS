@@ -2,16 +2,12 @@
 Message Tab - UI for composing and sending SMS messages
 """
 
-from datetime import datetime
-
 import phonenumbers
 import pycountry
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QComboBox,
     QFormLayout,
-    QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -23,25 +19,23 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.gui.ui_helpers import (
+    MessageTemplateMixin,
+    create_tab_layout,
+)
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
-class MessageTab(QWidget):
+class MessageTab(QWidget, MessageTemplateMixin):
     """Message composition and sending tab"""
 
     def __init__(self, app):
         """Initialize the message tab"""
         super().__init__()
-        self.app = app
-
-        # Create main layout
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
-
-        # Create components
+        self.templates: dict[str, str] = {}
+        create_tab_layout(self, app)
         self._create_components()
 
         # Populate countries
@@ -146,48 +140,6 @@ class MessageTab(QWidget):
         """Set up validation and event bindings"""
         self._load_templates()
 
-    def _load_templates(self):
-        """Load message templates from the database"""
-        try:
-            templates = self.app.db.get_templates()
-
-            self.template_combo.clear()
-            self.template_combo.addItem("-- Select Template --")
-
-            self.templates = {}
-            for template in templates:
-                name = template["name"]
-                self.template_combo.addItem(name)
-                self.templates[name] = template["content"]
-        except Exception:
-            logger.debug("Could not load message templates", exc_info=True)
-            self.template_combo.clear()
-            self.template_combo.addItem("-- No Templates Available --")
-            self.templates = {}
-
-    def _update_char_count(self):
-        """Update the character count display"""
-        text = self.message_text.toPlainText()
-        count = len(text)
-
-        parts = count // 160 + (1 if count % 160 > 0 else 0)
-
-        if parts > 1:
-            self.char_count_label.setText(f"{count} characters ({parts} messages)")
-        else:
-            self.char_count_label.setText(f"{count}/160 characters")
-
-    def _on_template_selected(self, template_name):
-        """Handle template selection"""
-        if (
-            template_name
-            and template_name != "-- Select Template --"
-            and template_name in self.templates
-        ):
-            content = self.templates[template_name]
-            self.message_text.setPlainText(content)
-            self._update_char_count()
-
     def _on_choose_contact(self):
         """Open contact selection dialog"""
         self.app.tab_widget.setCurrentIndex(1)  # Switch to Contacts tab
@@ -213,11 +165,10 @@ class MessageTab(QWidget):
         country = self.country_combo.currentText()
         country_code = ""
         if country:
-            start = country.rfind("(+")
-            if start >= 0:
-                end = country.rfind(")")
-                if end > start:
-                    country_code = country[start : end + 1]
+            if (start := country.rfind("(+")) >= 0 and (
+                end := country.rfind(")")
+            ) > start:
+                country_code = country[start : end + 1]
 
         # Format the recipient with country code if needed
         if country_code and not recipient.startswith("+"):
@@ -245,11 +196,10 @@ class MessageTab(QWidget):
         country = self.country_combo.currentText()
         country_code = ""
         if country:
-            start = country.rfind("(+")
-            if start >= 0:
-                end = country.rfind(")")
-                if end > start:
-                    country_code = country[start : end + 1]
+            if (start := country.rfind("(+")) >= 0 and (
+                end := country.rfind(")")
+            ) > start:
+                country_code = country[start : end + 1]
 
         # Format the recipient with country code if needed
         if country_code and not recipient.startswith("+"):

@@ -437,14 +437,8 @@ class TestDatabaseComprehensive:
                 # Restore original connection
                 self.db.conn = original_conn
 
-    def test_get_due_scheduled_messages(self):
+    def test_get_pending_scheduled_messages_due(self):
         """Test getting due scheduled messages"""
-        # Let's examine the implementation of get_due_scheduled_messages more carefully
-
-        # Read the implementation of the Database class for get_due_scheduled_messages
-        # It seems the method just delegates to get_pending_scheduled_messages()
-        # We'll need to properly mock the response from the database
-
         with patch.object(self.db, "_init_db", return_value=True):
             # Create a mock row object that can be converted to a dict
             mock_row = MagicMock()
@@ -479,7 +473,6 @@ class TestDatabaseComprehensive:
             self.db.conn = mock_conn
 
             try:
-                # Override the get_pending_scheduled_messages method since it's used by get_due_scheduled_messages
                 with patch.object(
                     self.db,
                     "get_pending_scheduled_messages",
@@ -493,8 +486,7 @@ class TestDatabaseComprehensive:
                         }
                     ],
                 ):
-                    # Get due messages with our mocked methods
-                    due_messages = self.db.get_due_scheduled_messages()
+                    due_messages = self.db.get_pending_scheduled_messages()
 
                     # Verify we got the expected result
                     assert len(due_messages) == 1
@@ -514,25 +506,14 @@ class TestDatabaseComprehensive:
         assert connection is not None
         assert connection == self.db.conn
 
-        # Test get_cursor method
-        cursor2 = self.db.get_cursor()
-        assert cursor2 is not None
-
-        # Test get_connection method
-        connection2 = self.db.get_connection()
-        assert connection2 is not None
-        assert connection2 == self.db.conn
-
-    def test_backward_compatibility_methods(self):
-        """Test backward compatibility methods for templates"""
-        # Test save_template (backward compatibility method)
-        result = self.db.save_template(
-            "BC Template", "This is a backward compatibility template."
+    def test_message_template_methods(self):
+        """Test message template save and retrieval"""
+        result = self.db.save_message_template(
+            "BC Template", "This is a message template."
         )
         assert result
 
-        # Test get_templates (backward compatibility method)
-        templates = self.db.get_templates()
+        templates = self.db.get_message_templates()
         assert len(templates) == 1
         assert templates[0]["name"] == "BC Template"
 
@@ -636,20 +617,20 @@ class TestDatabaseComprehensive:
         results = self.db.search_contacts("test")
         assert results == []
 
-    def test_save_template_update_existing(self):
+    def test_save_message_template_update_existing(self):
         """Test updating an existing message template"""
         name = "test_template"
         initial_content = "Hello {name}!"
         updated_content = "Hi {name}, how are you?"
 
         # Save initial template
-        assert self.db.save_template(name, initial_content)
+        assert self.db.save_message_template(name, initial_content)
 
         # Update template
-        assert self.db.save_template(name, updated_content)
+        assert self.db.save_message_template(name, updated_content)
 
         # Verify template was updated, not duplicated
-        templates = self.db.get_templates()
+        templates = self.db.get_message_templates()
         matching_templates = [t for t in templates if t["name"] == name]
         assert len(matching_templates) == 1
         assert matching_templates[0]["content"] == updated_content

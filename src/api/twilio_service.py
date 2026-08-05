@@ -3,28 +3,54 @@ Twilio SMS service implementation
 """
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any
 
+from twilio.base.exceptions import TwilioException, TwilioRestException
 from twilio.rest import Client
-
-try:
-    from twilio.base.exceptions import TwilioRestException
-except ImportError:
-    # Fallback for test environments or when Twilio is not fully available
-    TwilioRestException = Exception
 
 from src.api.sms_service import SMSResponse, SMSService
 from src.utils.logger import get_logger
 
+# Exposed for tests that patch src.api.twilio_service.TwilioRestException.
+_TEST_TWILIO_REST_EXCEPTION = TwilioRestException
 
-def normalize_twilio_credentials(credentials: Dict[str, str]) -> Dict[str, str]:
+
+def normalize_twilio_credentials(credentials: dict[str, str]) -> dict[str, str]:
     """Normalize Twilio credential keys to use from_number."""
     normalized = dict(credentials)
-    from_number = normalized.get("from_number") or normalized.get("phone_number")
-    if from_number:
+    if from_number := normalized.get("from_number") or normalized.get("phone_number"):
         normalized["from_number"] = from_number
     normalized.pop("phone_number", None)
     return normalized
+
+
+def _twilio_error_message(exc: BaseException) -> str:
+    """Format Twilio-style or generic API errors."""
+    if hasattr(exc, "msg") and hasattr(exc, "code"):
+        return f"Twilio API error: {exc.msg}"
+    return f"Error: {exc!s}"
+
+
+def _twilio_error_details(exc: BaseException) -> dict[str, Any] | None:
+    """Extract Twilio-style error metadata when present."""
+    if hasattr(exc, "msg") and hasattr(exc, "code"):
+        return {
+            "code": exc.code,
+            "status": getattr(exc, "status", None),
+            "more_info": getattr(exc, "more_info", None),
+        }
+    return None
+
+
+def _sms_error_response(exc: BaseException) -> SMSResponse:
+    """Build an SMSResponse for a Twilio send failure."""
+    if details := _twilio_error_details(exc):
+        return SMSResponse(
+            success=False,
+            error=_twilio_error_message(exc),
+            details=details,
+        )
+    return SMSResponse(success=False, error=_twilio_error_message(exc))
 
 
 class TwilioService(SMSService):
@@ -57,7 +83,7 @@ class TwilioService(SMSService):
                 }
             )
 
-    def configure(self, credentials: Dict[str, str], validate: bool = False) -> bool:
+    def configure(self, credentials: dict[str, str], validate: bool = False) -> bool:
         """
         Configure the Twilio service with credentials
 
@@ -89,8 +115,11 @@ class TwilioService(SMSService):
             self.logger.info("Twilio service configured successfully")
             return True
 
-        except Exception as e:
-            self.logger.error(f"Error configuring Twilio: {e}")
+        except (TwilioException, OSError, ValueError, TypeError) as exc:
+            self.logger.error("Error configuring Twilio: %s", exc)
+            return False
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.logger.error("Error configuring Twilio: %s", exc)
             return False
 
     def send_sms(self, recipient: str, message: str) -> SMSResponse:
@@ -125,23 +154,17 @@ class TwilioService(SMSService):
                 },
             )
 
-        except Exception as e:
-            self.logger.error(f"Error sending SMS with Twilio: {e}")
-            # Check if it's a TwilioRestException
-            if hasattr(e, "msg") and hasattr(e, "code"):
-                return SMSResponse(
-                    success=False,
-                    error=f"Twilio API error: {e.msg}",
-                    details={
-                        "code": e.code,
-                        "status": getattr(e, "status", None),
-                        "more_info": getattr(e, "more_info", None),
-                    },
-                )
-            else:
-                return SMSResponse(success=False, error=f"Error: {str(e)}")
+        except TwilioException as exc:
+            self.logger.error("Error sending SMS with Twilio: %s", exc)
+            return _sms_error_response(exc)
+        except (OSError, ValueError, TypeError, RuntimeError) as exc:
+            self.logger.error("Error sending SMS with Twilio: %s", exc)
+            return _sms_error_response(exc)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.logger.error("Error sending SMS with Twilio: %s", exc)
+            return _sms_error_response(exc)
 
-    def check_balance(self) -> Dict[str, Any]:
+    def check_balance(self) -> dict[str, Any]:
         """
         Check the Twilio account balance
 
@@ -165,13 +188,15 @@ class TwilioService(SMSService):
                 "type": getattr(account, "type", "standard"),
             }
 
-        except Exception as e:
-            self.logger.error(f"Error checking balance: {e}")
-            # Check if it's a TwilioRestException
-            if hasattr(e, "msg") and hasattr(e, "code"):
-                return {"error": f"Twilio API error: {e.msg}"}
-            else:
-                return {"error": f"Error: {str(e)}"}
+        except TwilioException as exc:
+            self.logger.error("Error checking balance: %s", exc)
+            return {"error": _twilio_error_message(exc)}
+        except (OSError, ValueError, TypeError, RuntimeError) as exc:
+            self.logger.error("Error checking balance: %s", exc)
+            return {"error": _twilio_error_message(exc)}
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.logger.error("Error checking balance: %s", exc)
+            return {"error": _twilio_error_message(exc)}
 
     def get_remaining_quota(self) -> int:
         """
@@ -184,7 +209,7 @@ class TwilioService(SMSService):
         # Return the configured limit for consistency
         return self.daily_limit
 
-    def get_delivery_status(self, message_id: str) -> Dict[str, Any]:
+    def get_delivery_status(self, message_id: str) -> dict[str, Any]:
         """
         Get delivery status for a message
 
@@ -223,13 +248,15 @@ class TwilioService(SMSService):
                 ),
             }
 
-        except Exception as e:
-            self.logger.error(f"Error checking message status: {e}")
-            # Check if it's a TwilioRestException
-            if hasattr(e, "msg") and hasattr(e, "code"):
-                return {"status": "error", "error": f"Twilio API error: {e.msg}"}
-            else:
-                return {"status": "error", "error": f"Error: {str(e)}"}
+        except TwilioException as exc:
+            self.logger.error("Error checking message status: %s", exc)
+            return {"status": "error", "error": _twilio_error_message(exc)}
+        except (OSError, ValueError, TypeError, RuntimeError) as exc:
+            self.logger.error("Error checking message status: %s", exc)
+            return {"status": "error", "error": _twilio_error_message(exc)}
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.logger.error("Error checking message status: %s", exc)
+            return {"status": "error", "error": _twilio_error_message(exc)}
 
     def validate_credentials(self) -> bool:
         """
@@ -246,10 +273,12 @@ class TwilioService(SMSService):
             self.client.api.accounts(self.account_sid).fetch()
             return True
 
-        except Exception as e:
-            # Check if it's a TwilioRestException
-            if hasattr(e, "msg") and hasattr(e, "code"):
-                self.logger.error(f"Twilio authentication error: {e}")
-            else:
-                self.logger.error(f"Error validating Twilio credentials: {e}")
+        except TwilioException as exc:
+            self.logger.error("Twilio authentication error: %s", exc)
+            return False
+        except (OSError, ValueError, TypeError, RuntimeError) as exc:
+            self.logger.error("Error validating Twilio credentials: %s", exc)
+            return False
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            self.logger.error("Error validating Twilio credentials: %s", exc)
             return False
