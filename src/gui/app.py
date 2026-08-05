@@ -44,6 +44,13 @@ logger = get_logger("freesms.gui")
 class SMSApplication(QMainWindow):
     """Main FreeSMS Application"""
 
+    status_changed = Signal(str)
+    service_status_changed = Signal(str)
+    send_response_ready = Signal(object, str)
+    send_error_ready = Signal(str, str)
+    scheduled_send_update = Signal(object)
+    scheduled_fail_update = Signal(object)
+
     def __init__(self, config=None, notification=None):
         """Initialize the application"""
         super().__init__()
@@ -68,6 +75,13 @@ class SMSApplication(QMainWindow):
 
         # Create components
         self._create_components()
+
+        self.status_changed.connect(self.set_status)
+        self.service_status_changed.connect(self.service_status_label_set_text)
+        self.send_response_ready.connect(self._handle_send_response)
+        self.send_error_ready.connect(self._handle_send_error)
+        self.scheduled_send_update.connect(self._update_after_scheduled_send)
+        self.scheduled_fail_update.connect(self._update_after_scheduled_failure)
 
         # Initialize services
         self._initialize_services()
@@ -248,23 +262,29 @@ class SMSApplication(QMainWindow):
         """Update status information periodically"""
         while True:
             try:
-                self._update_service_status()
+                status_text = self._build_service_status_text()
+                self.service_status_changed.emit(status_text)
                 time.sleep(5)  # Update every 5 seconds
             except Exception as exc:
                 logger.debug("Background status update error: %s", exc)
                 time.sleep(5)
 
-    def _update_service_status(self):
-        """Update the SMS service status display"""
+    def _build_service_status_text(self) -> str:
+        """Build the service status label text (safe to call from worker threads)."""
         if not self.service_manager.active_service:
-            service_text = "No SMS service configured"
-        else:
-            service = self.service_manager.active_service
-            quota = service.get_remaining_quota()
-            service_text = f"Service: {service.service_name} | Remaining: {quota}/{service.daily_limit}"
+            return "No SMS service configured"
 
-        # Update the service status label
-        self.service_status_label.setText(service_text)
+        service = self.service_manager.active_service
+        quota = service.get_remaining_quota()
+        return f"Service: {service.service_name} | Remaining: {quota}/{service.daily_limit}"
+
+    def service_status_label_set_text(self, text: str) -> None:
+        """Update the service status label on the main thread."""
+        self.service_status_label.setText(text)
+
+    def _update_service_status(self):
+        """Update the SMS service status display on the main thread."""
+        self.service_status_label.setText(self._build_service_status_text())
 
     def _on_tab_changed(self, index):
         """Handle tab changed event"""
@@ -282,8 +302,7 @@ class SMSApplication(QMainWindow):
 
     def _on_scheduled_message_sent(self, data):
         """Handle scheduled message sent event"""
-        # Update the UI (Qt handles thread safety automatically)
-        self._update_after_scheduled_send(data)
+        self.scheduled_send_update.emit(data)
 
     def _update_after_scheduled_send(self, data):
         """Update UI after scheduled message is sent"""
@@ -299,8 +318,7 @@ class SMSApplication(QMainWindow):
 
     def _on_scheduled_message_failed(self, data):
         """Handle scheduled message failed event"""
-        # Update the UI (Qt handles thread safety automatically)
-        self._update_after_scheduled_failure(data)
+        self.scheduled_fail_update.emit(data)
 
     def _update_after_scheduled_failure(self, data):
         """Update UI after scheduled message fails"""
@@ -337,18 +355,13 @@ class SMSApplication(QMainWindow):
     def _send_message_thread(self, recipient, message, service_name):
         """Send message in a background thread"""
         try:
-            # Update status
-            self.set_status(f"Sending message to {recipient}...")
+            self.status_changed.emit(f"Sending message to {recipient}...")
 
-            # Send the message
             response = self.service_manager.send_sms(recipient, message, service_name)
-
-            # Handle the response (Qt handles thread safety automatically)
-            self._handle_send_response(response, recipient)
+            self.send_response_ready.emit(response, recipient)
 
         except Exception as e:
-            # Handle errors (Qt handles thread safety automatically)
-            self._handle_send_error(str(e), recipient)
+            self.send_error_ready.emit(str(e), recipient)
 
     def _handle_send_response(self, response, recipient):
         """Handle send message response"""

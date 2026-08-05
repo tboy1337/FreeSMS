@@ -108,3 +108,19 @@ def test_migrate_legacy_data_skips_existing_dest_items(temp_home):
 
     migrate_legacy_data()
     assert (target / "config.json").read_text(encoding="utf-8") == '{"existing": true}'
+
+
+def test_migrate_legacy_data_skips_duplicate_items_across_legacy_dirs(temp_home):
+    """Second legacy directory does not overwrite files copied from the first."""
+    first_legacy = temp_home / ".sms_sender"
+    first_legacy.mkdir()
+    (first_legacy / "shared.txt").write_text("from-sms-sender", encoding="utf-8")
+
+    second_legacy = temp_home / ".message_master"
+    second_legacy.mkdir()
+    (second_legacy / "shared.txt").write_text("from-message-master", encoding="utf-8")
+
+    migrate_legacy_data()
+
+    target = get_app_dir()
+    assert (target / "shared.txt").read_text(encoding="utf-8") == "from-sms-sender"

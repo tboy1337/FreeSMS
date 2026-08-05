@@ -10,6 +10,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 import schedule
 
+from src.api.service_manager import SMSServiceManager
+from src.models.database import Database
 from src.utils.logger import get_logger
 
 logger = get_logger("freesms.scheduler")

@@ -1273,13 +1273,23 @@ class TestMainFunction:
         mock_cli_class.return_value = mock_cli_instance
         mock_cli_instance.send_message.return_value = True
 
-        main()
-
-        # Verify CLI was initialized and send_message was called
+        assert main() == 0
         mock_cli_class.assert_called_once()
         mock_cli_instance.send_message.assert_called_once_with(
             "+1234567890", "Hello World", None
         )
+        mock_cli_instance.shutdown.assert_called_once()
+
+    @patch("src.cli.cli.SMSCommandLineInterface")
+    def test_main_send_command_failure_exit_code(self, mock_cli_class):
+        """Failed send commands return exit code 1."""
+        sys.argv = ["cli.py", "send", "+1234567890", "Hello World"]
+
+        mock_cli_instance = MagicMock()
+        mock_cli_class.return_value = mock_cli_instance
+        mock_cli_instance.send_message.return_value = False
+
+        assert main() == 1
         mock_cli_instance.shutdown.assert_called_once()
 
     @patch("src.cli.cli.SMSCommandLineInterface")
@@ -1352,8 +1362,7 @@ class TestMainFunction:
         mock_cli_class.return_value = mock_cli_instance
         mock_cli_instance.list_contacts.side_effect = Exception("Test error")
 
-        with pytest.raises(Exception, match="Test error"):
-            main()
+        assert main() == 1
 
         mock_cli_class.assert_called_once()
         mock_cli_instance.shutdown.assert_called_once()

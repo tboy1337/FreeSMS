@@ -221,6 +221,7 @@ def setup_gui_test(qtbot):
         pass
 
 
+@pytest.mark.gui
 class TestSMSApplicationGUI:
     """Test GUI components using pytest-qt"""
 
@@ -600,3 +601,42 @@ class TestSMSApplicationGUI:
                     app.tab_widget.setCurrentIndex(i)
                     assert app.tab_widget.currentIndex() == i
                     break
+
+
+@pytest.mark.gui
+class TestSystemTrayIcon:
+    """Tests for system tray icon behavior."""
+
+    def test_get_default_icon_path(self):
+        """Default icon path resolves to shipped GUI assets."""
+        from src.gui.systemtray import SystemTrayIcon
+
+        tray = SystemTrayIcon.__new__(SystemTrayIcon)
+        path = SystemTrayIcon._get_default_icon_path(tray)
+
+        assert path is not None
+        assert "sms_icon" in path
+
+    def test_on_show_window(self, qtbot):
+        """Show handler displays and activates the parent window."""
+        from PySide6.QtWidgets import QWidget
+
+        from src.gui.systemtray import SystemTrayIcon
+
+        parent = QWidget()
+        qtbot.addWidget(parent)
+        tray = SystemTrayIcon.__new__(SystemTrayIcon)
+        tray.app = parent
+        SystemTrayIcon._on_show_window(tray)
+        assert parent.isVisible()
+
+    def test_shutdown_clears_tray(self):
+        """Shutdown hides and clears the tray icon reference."""
+        from src.gui.systemtray import SystemTrayIcon
+
+        tray = SystemTrayIcon.__new__(SystemTrayIcon)
+        mock_tray = MagicMock()
+        tray.tray_icon = mock_tray
+        SystemTrayIcon.shutdown(tray)
+        mock_tray.hide.assert_called_once()
+        assert tray.tray_icon is None

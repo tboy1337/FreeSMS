@@ -747,3 +747,32 @@ class TestDatabaseComprehensive:
         """Database errors during send counting return zero."""
         self.db.close()
         assert self.db.count_successful_sends_today("twilio") == 0
+
+    def test_concurrent_database_access(self):
+        """Multiple threads can read and write without corrupting data."""
+        import threading
+
+        errors: list[Exception] = []
+        barrier = threading.Barrier(4)
+
+        def worker(index: int) -> None:
+            try:
+                barrier.wait(timeout=5)
+                for offset in range(10):
+                    self.db.save_contact(
+                        name=f"Contact {index}-{offset}",
+                        phone=f"+1555000{index}{offset}",
+                    )
+                contacts = self.db.get_contacts()
+                assert isinstance(contacts, list)
+            except Exception as exc:  # pragma: no cover - collected for assertion
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(4)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+
+        assert not errors, f"Concurrent DB errors: {errors}"
+        assert len(self.db.get_contacts()) == 40

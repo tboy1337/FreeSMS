@@ -2,11 +2,14 @@
 Database module for SMS application
 """
 
+import json
 import os
 import sqlite3
+import threading
 from datetime import datetime
+from functools import wraps
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar
 
 from src.security.encryption import (
     decrypt_credentials,
@@ -18,6 +21,19 @@ from src.utils.logger import get_logger
 from src.utils.paths import get_app_dir, get_db_path
 
 _DB_TIMESTAMP_FORMAT = "%Y-%m-%d %H:%M:%S"
+
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def _db_locked(method: _F) -> _F:
+    """Run a database method under the instance reentrant lock."""
+
+    @wraps(method)
+    def wrapper(self: "Database", *args: Any, **kwargs: Any) -> Any:
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
 
 
 def _format_db_timestamp(value: datetime | str) -> str:
@@ -48,18 +64,23 @@ class Database:
 
         self.db_path = db_path
         self.conn = None
+        self._lock = threading.RLock()
 
         # Initialize database
-        self._init_db()
+        with self._lock:
+            self._init_db()
 
     def _init_db(self):
         """Initialize the database connection and tables"""
         try:
-            # Connect to database
+            # Connect to database (check_same_thread=False; access serialized via _lock)
             self.conn = sqlite3.connect(
-                self.db_path, detect_types=sqlite3.PARSE_DECLTYPES
+                self.db_path,
+                detect_types=sqlite3.PARSE_DECLTYPES,
+                check_same_thread=False,
             )
             self.conn.row_factory = sqlite3.Row
+            self.conn.execute("PRAGMA journal_mode=WAL")
 
             # Create tables if they don't exist
             self._create_tables()
@@ -144,6 +165,7 @@ class Database:
         # Commit changes
         self.conn.commit()
 
+    @_db_locked
     def close(self):
         """Close the database connection"""
         if self.conn:
@@ -154,9 +176,11 @@ class Database:
         """Ensure open connections are closed when instances are garbage-collected."""
         try:
             self.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            if hasattr(self, "logger"):
+                self.logger.debug("Database cleanup during GC failed: %s", exc)
 
+    @_db_locked
     def save_api_credentials(
         self, service_name: str, credentials: Dict[str, str], is_active: bool = False
     ) -> bool:
@@ -222,6 +246,7 @@ class Database:
             self.logger.error(f"Error saving API credentials: {e}")
             return False
 
+    @_db_locked
     def get_api_credentials(self, service_name: str) -> Optional[Dict[str, str]]:
         """
         Get API credentials for a service
@@ -269,6 +294,7 @@ class Database:
             self.logger.error(f"Error getting API credentials: {e}")
             return None
 
+    @_db_locked
     def get_active_services(self) -> List[str]:
         """
         Get names of active services
@@ -289,6 +315,7 @@ class Database:
             self.logger.error(f"Error getting active services: {e}")
             return []
 
+    @_db_locked
     def save_contact(
         self, name: str, phone: str, country: str = "", notes: str = ""
     ) -> bool:
@@ -339,6 +366,7 @@ class Database:
             self.logger.error(f"Error saving contact: {e}")
             return False
 
+    @_db_locked
     def get_contacts(self) -> List[Dict[str, Any]]:
         """
         Get all contacts
@@ -357,6 +385,7 @@ class Database:
             self.logger.error(f"Error getting contacts: {e}")
             return []
 
+    @_db_locked
     def get_contact(self, contact_id: int) -> Optional[Dict[str, Any]]:
         """
         Get a contact by ID
@@ -381,6 +410,7 @@ class Database:
             self.logger.error(f"Error getting contact: {e}")
             return None
 
+    @_db_locked
     def delete_contact(self, contact_id: int) -> bool:
         """
         Delete a contact
@@ -403,6 +433,7 @@ class Database:
             self.logger.error(f"Error deleting contact: {e}")
             return False
 
+    @_db_locked
     def search_contacts(self, query: str) -> List[Dict[str, Any]]:
         """
         Search contacts by name or phone number
@@ -436,6 +467,7 @@ class Database:
             self.logger.error(f"Error searching contacts: {e}")
             return []
 
+    @_db_locked
     def save_message_history(
         self,
         recipient: str,
@@ -478,6 +510,7 @@ class Database:
             self.logger.error(f"Error saving message history: {e}")
             return False
 
+    @_db_locked
     def count_successful_sends_today(self, service_name: str) -> int:
         """
         Count successful message sends for a service today.
@@ -509,6 +542,7 @@ class Database:
             self.logger.error(f"Error counting today's sends: {e}")
             return 0
 
+    @_db_locked
     def get_message_history(self, limit: int = 100) -> List[Dict[str, Any]]:
         """
         Get message history
@@ -532,6 +566,7 @@ class Database:
             self.logger.error(f"Error getting message history: {e}")
             return []
 
+    @_db_locked
     def save_scheduled_message(
         self,
         recipient: str,
@@ -562,8 +597,6 @@ class Database:
 
             # Convert recurrence_data to JSON if provided
             if recurrence_data is not None:
-                import json
-
                 recurring_interval = json.dumps(recurrence_data)
 
             scheduled_time = _format_db_timestamp(scheduled_time)
@@ -593,6 +626,7 @@ class Database:
             self.logger.error(f"Error saving scheduled message: {e}")
             return None
 
+    @_db_locked
     def get_scheduled_messages(
         self, include_completed: bool = False
     ) -> List[Dict[str, Any]]:
@@ -622,6 +656,7 @@ class Database:
             self.logger.error(f"Error getting scheduled messages: {e}")
             return []
 
+    @_db_locked
     def get_pending_scheduled_messages(self) -> List[Dict[str, Any]]:
         """
         Get pending scheduled messages that are due
@@ -650,6 +685,7 @@ class Database:
             self.logger.error(f"Error getting pending scheduled messages: {e}")
             return []
 
+    @_db_locked
     def get_due_scheduled_messages(self) -> List[Dict[str, Any]]:
         """
         Alias for get_pending_scheduled_messages
@@ -659,6 +695,7 @@ class Database:
         """
         return self.get_pending_scheduled_messages()
 
+    @_db_locked
     def update_scheduled_message_status(
         self, message_id: int, status: str, completed_at: str = None
     ) -> bool:
@@ -705,6 +742,7 @@ class Database:
             self.logger.error(f"Error updating scheduled message status: {e}")
             return False
 
+    @_db_locked
     def delete_scheduled_message(self, message_id: int) -> bool:
         """
         Delete a scheduled message
@@ -726,6 +764,7 @@ class Database:
             self.logger.error(f"Error deleting scheduled message: {e}")
             return False
 
+    @_db_locked
     def save_message_template(self, name: str, content: str) -> bool:
         """
         Save a message template
@@ -772,6 +811,7 @@ class Database:
             self.logger.error(f"Error saving message template: {e}")
             return False
 
+    @_db_locked
     def get_message_templates(self) -> List[Dict[str, Any]]:
         """
         Get all message templates
@@ -790,6 +830,7 @@ class Database:
             self.logger.error(f"Error getting message templates: {e}")
             return []
 
+    @_db_locked
     def delete_message_template(self, template_id: int) -> bool:
         """
         Delete a message template
@@ -811,6 +852,7 @@ class Database:
             self.logger.error(f"Error deleting message template: {e}")
             return False
 
+    @_db_locked
     def get_templates(self) -> List[Dict[str, Any]]:
         """
         Get all message templates (alias for get_message_templates)
@@ -820,6 +862,7 @@ class Database:
         """
         return self.get_message_templates()
 
+    @_db_locked
     def save_template(self, name: str, content: str) -> bool:
         """
         Save a message template (alias for save_message_template)
@@ -833,6 +876,7 @@ class Database:
         """
         return self.save_message_template(name, content)
 
+    @_db_locked
     def get_cursor(self):
         """
         Get the database cursor
@@ -842,6 +886,7 @@ class Database:
         """
         return self.conn.cursor()
 
+    @_db_locked
     def get_connection(self):
         """
         Get the database connection
@@ -871,6 +916,7 @@ class Database:
         """
         return self.get_connection()
 
+    @_db_locked
     def update_scheduled_message(
         self,
         message_id: int,
@@ -941,8 +987,8 @@ class Database:
             # Add the WHERE clause
             params.append(message_id)
 
-            # Execute the update
-            cursor.execute(
+            # Execute the update (column names are whitelisted literals only)
+            cursor.execute(  # nosec B608
                 f"UPDATE scheduled_messages SET {', '.join(updates)} WHERE id = ?",
                 params,
             )

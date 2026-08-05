@@ -2,7 +2,7 @@
 """
 Run the full development verification pipeline (check only, no auto-fix).
 
-Steps: pyproject-fmt, black, isort, pip-audit, pylint, mypy, pytest, CLI --help smoke test.
+Steps: pyproject-fmt, black, isort, autopep8, pip-audit, bandit, pylint, mypy, pytest, CLI --help smoke test.
 """
 
 from __future__ import annotations
@@ -94,7 +94,25 @@ VERIFY_STEPS: tuple[VerifyStep, ...] = (
         "isort",
         [sys.executable, "-m", "isort", "--check-only", *PYTHON_CHECK_PATHS],
     ),
+    VerifyStep(
+        "autopep8",
+        [
+            sys.executable,
+            "-m",
+            "autopep8",
+            "--select=W291,W293",
+            "--recursive",
+            "--diff",
+            "src",
+            "tests",
+            "scripts",
+            "run.py",
+        ],
+    ),
     VerifyStep("pip-audit", _build_pip_audit_command()),
+    VerifyStep(
+        "bandit", [sys.executable, "-m", "bandit", "-r", "src", "-c", "pyproject.toml"]
+    ),
     VerifyStep("pylint", [sys.executable, "-m", "pylint", "src"]),
     VerifyStep("mypy", [sys.executable, "-m", "mypy", "src"]),
     VerifyStep("pytest", [sys.executable, "-m", "pytest", "tests/"]),

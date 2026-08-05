@@ -204,15 +204,36 @@ FreeSMS/
 
 ## Testing
 
+Run the full local verification pipeline (formatting, security audit, lint, type check, tests):
+
+```bash
+py scripts/verify.py
+```
+
 Run the test suite with coverage:
+
 ```bash
 pytest --cov=src tests/
 ```
 
-Run linting and type checks:
+GUI tests are marked with `@pytest.mark.gui` and can be selected or excluded:
+
+```bash
+pytest -m gui
+pytest -m "not gui"
+```
+
+Run linting and type checks individually:
+
 ```bash
 pylint src
 mypy src
+```
+
+GUI icon assets (`sms_icon.png`, `sms_icon.ico`) are shipped in `src/gui/assets/`. To regenerate them after design changes, install dev dependencies and run:
+
+```bash
+py src/utils/icon_generator.py
 ```
 
 ## Customization

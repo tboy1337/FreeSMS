@@ -32,7 +32,8 @@ def main():
     cmd = [sys.executable, main_script] + args
 
     # Run the application
-    subprocess.run(cmd, env=env)
+    result = subprocess.run(cmd, env=env)
+    sys.exit(result.returncode)
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ if project_root not in sys.path:
 
 load_dotenv()
 
+from src import __version__
 from src.cli.cli import main as cli_main
 from src.gui.app import SMSApplication
 from src.services.config_service import ConfigService
@@ -70,7 +71,7 @@ def main() -> int | None:
 
     qt_app = QApplication(sys.argv)
     qt_app.setApplicationName("FreeSMS")
-    qt_app.setApplicationVersion("1.0")
+    qt_app.setApplicationVersion(__version__)
 
     try:
         from PySide6.QtGui import QIcon

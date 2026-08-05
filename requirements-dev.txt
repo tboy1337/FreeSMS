@@ -17,3 +17,15 @@ black
 isort
 pip-audit
 pyproject-fmt
+autopep8
+
+# Security
+bandit
+
+# Icon regeneration (dev only; shipped assets live in src/gui/assets/)
+Pillow
+
+# Additional testing utilities
+pytest-asyncio
+pytest-mock
+pytest-xdist

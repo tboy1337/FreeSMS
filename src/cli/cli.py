@@ -1019,28 +1019,36 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
+def main() -> int:
     """Main entry point for the CLI application"""
     args = parse_args()
     cli = SMSCommandLineInterface()
+    exit_code = 0
+
+    def mark_failure(result: object) -> None:
+        nonlocal exit_code
+        if result is False:
+            exit_code = 1
 
     try:
         if args.command == "send":
-            cli.send_message(args.recipient, args.message, args.service)
+            mark_failure(cli.send_message(args.recipient, args.message, args.service))
 
         elif args.command == "contacts":
             if args.subcommand == "list":
                 cli.list_contacts()
             elif args.subcommand == "add":
-                cli.add_contact(args.name, args.phone, args.country, args.notes)
+                mark_failure(
+                    cli.add_contact(args.name, args.phone, args.country, args.notes)
+                )
             elif args.subcommand == "delete":
-                cli.delete_contact(args.id)
+                mark_failure(cli.delete_contact(args.id))
             elif args.subcommand == "import":
-                cli.import_contacts(args.input_file)
+                mark_failure(cli.import_contacts(args.input_file))
             elif args.subcommand == "export":
-                cli.export_contacts(args.output_file)
+                mark_failure(cli.export_contacts(args.output_file))
             elif args.subcommand == "template":
-                cli.create_contacts_template(args.output_file)
+                mark_failure(cli.create_contacts_template(args.output_file))
             else:
                 cli.list_contacts()
 
@@ -1048,25 +1056,26 @@ def main():
             if args.subcommand == "list":
                 cli.list_message_history(args.limit)
             elif args.subcommand == "export":
-                cli.export_history(args.output_file, args.limit)
+                mark_failure(cli.export_history(args.output_file, args.limit))
             else:
-                # Default to list if no subcommand provided
                 cli.list_message_history(20)
 
         elif args.command == "schedule":
             if args.subcommand == "list":
                 cli.list_scheduled_messages(args.all)
             elif args.subcommand == "add":
-                cli.schedule_message(
-                    args.recipient,
-                    args.message,
-                    args.time,
-                    args.service,
-                    args.recurring,
-                    args.interval,
+                mark_failure(
+                    cli.schedule_message(
+                        args.recipient,
+                        args.message,
+                        args.time,
+                        args.service,
+                        args.recurring,
+                        args.interval,
+                    )
                 )
             elif args.subcommand == "cancel":
-                cli.cancel_scheduled_message(args.id)
+                mark_failure(cli.cancel_scheduled_message(args.id))
             else:
                 cli.list_scheduled_messages()
 
@@ -1074,9 +1083,9 @@ def main():
             if args.subcommand == "list":
                 cli.list_templates()
             elif args.subcommand == "add":
-                cli.add_template(args.name, args.content)
+                mark_failure(cli.add_template(args.name, args.content))
             elif args.subcommand == "delete":
-                cli.delete_template(args.id)
+                mark_failure(cli.delete_template(args.id))
             else:
                 cli.list_templates()
 
@@ -1084,21 +1093,24 @@ def main():
             if args.subcommand == "list":
                 cli.list_services()
             elif args.subcommand == "configure":
-                cli.configure_service(args.name, args.credentials)
+                mark_failure(cli.configure_service(args.name, args.credentials))
             elif args.subcommand == "activate":
-                cli.set_active_service(args.name)
+                mark_failure(cli.set_active_service(args.name))
             elif args.subcommand == "test":
-                cli.test_service(args.name)
+                mark_failure(cli.test_service(args.name))
             else:
                 cli.list_services()
 
         else:
-            # If no command is provided, show help
             parse_args(["--help"])
+    except Exception as exc:
+        print(f"Error: {exc}")
+        exit_code = 1
     finally:
-        # Shutdown CLI resources
         cli.shutdown()
+
+    return exit_code
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

@@ -461,7 +461,7 @@ class TestMainExecution:
         # Verify Qt application setup
         mock_qapp.assert_called_once_with(sys.argv)
         mock_qt_app.setApplicationName.assert_called_once_with("FreeSMS")
-        mock_qt_app.setApplicationVersion.assert_called_once_with("1.0")
+        mock_qt_app.setApplicationVersion.assert_called_once_with("1.0.2")
 
         # Verify main window creation and shown (not minimized)
         mock_sms_app.assert_called_once_with(
@@ -747,3 +747,39 @@ class TestMainExecution:
         mock_main_window.hide.assert_called_once()
         mock_main_window.show.assert_not_called()
         mock_notification.send_notification.assert_called_once()
+
+
+class TestRunScript:
+    """Tests for the run.py launcher script."""
+
+    @patch("run.subprocess.run")
+    def test_run_script_propagates_exit_code(self, mock_run):
+        """run.py exits with the child process return code."""
+        import run
+
+        mock_run.return_value = MagicMock(returncode=42)
+
+        with pytest.raises(SystemExit) as exc_info:
+            run.main()
+
+        assert exc_info.value.code == 42
+        mock_run.assert_called_once()
+
+    @patch("run.subprocess.run")
+    def test_run_script_cli_mode_adds_flag(self, mock_run):
+        """run.py rewrites 'cli' subcommand into --cli for main.py."""
+        import run
+
+        mock_run.return_value = MagicMock(returncode=0)
+        original_argv = sys.argv.copy()
+        sys.argv = ["run.py", "cli", "send", "+1234567890", "hello"]
+
+        try:
+            with pytest.raises(SystemExit):
+                run.main()
+        finally:
+            sys.argv = original_argv
+
+        called_cmd = mock_run.call_args[0][0]
+        assert "--cli" in called_cmd
+        assert "cli" not in called_cmd[2:]

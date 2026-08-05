@@ -96,6 +96,31 @@ def test_import_contacts_from_csv_success(contact_manager):
     assert not errors
 
 
+def test_import_contacts_skips_empty_rows(contact_manager):
+    """Blank CSV rows are skipped without error."""
+    csv_data = "name,phone,country,notes\n,,,\nGina,+12125551234,US,\n"
+    count, errors = contact_manager.import_contacts_from_csv(csv_data)
+    assert count == 1
+    assert not errors
+
+
+def test_import_contacts_defaults_country_on_parse_error(contact_manager):
+    """Invalid phone parsing defaults country to US before validation."""
+    csv_data = "name,phone,notes\nHenry,not-a-phone,note\n"
+    count, errors = contact_manager.import_contacts_from_csv(csv_data)
+    assert count == 0
+    assert any("Henry" in error for error in errors)
+
+
+def test_import_contacts_reports_add_failure(contact_manager, monkeypatch):
+    """Failed contact inserts are reported per CSV row."""
+    monkeypatch.setattr(contact_manager, "add_contact", lambda *_args, **_kwargs: False)
+    csv_data = "name,phone,country,notes\nIvy,+12125551234,US,\n"
+    count, errors = contact_manager.import_contacts_from_csv(csv_data)
+    assert count == 0
+    assert any("Ivy" in error for error in errors)
+
+
 def test_import_contacts_extract_country_from_phone(contact_manager):
     """Country can be inferred from an E.164 phone number."""
     csv_data = "name,phone,notes\nFrank,+12125551234,note\n"

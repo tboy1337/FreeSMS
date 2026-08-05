@@ -5,6 +5,14 @@ import gc
 import pytest
 
 
+def pytest_configure(config: pytest.Config) -> None:
+    """Register custom markers defined in pytest.ini."""
+    config.addinivalue_line(
+        "markers",
+        "gui: marks tests as GUI tests (may require display)",
+    )
+
+
 @pytest.fixture(autouse=True)
 def cleanup_qapplication():
     """Destroy any QApplication instance left by GUI tests."""

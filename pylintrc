@@ -8,7 +8,6 @@ init-hook = 'import sys; sys.path.append("src")'
 
 # Files or directories to be skipped
 ignore = CVS
-ignore-paths = ^src/(gui|cli)/test_.*\.py$
 
 # Pickle collected data for later comparisons
 persistent = yes

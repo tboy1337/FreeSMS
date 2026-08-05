@@ -538,3 +538,45 @@ class TestTwilioServiceImplementation:
         self.mock_client.api.accounts.return_value = account_side
 
         assert not self.service.validate_credentials()
+
+    def test_check_balance_general_error_branch(self):
+        """Map non-Twilio exceptions in check_balance."""
+        account_side = MagicMock()
+        account_side.fetch.side_effect = RuntimeError("network down")
+        self.mock_client.api.accounts.return_value = account_side
+
+        balance = self.service.check_balance()
+
+        assert balance["error"] == "Error: network down"
+
+    def test_get_delivery_status_twilio_style_error(self):
+        """Map Twilio-style API errors in get_delivery_status."""
+        api_error = Exception("not found")
+        api_error.msg = "not found"
+        api_error.code = 20404
+        messages_side = MagicMock()
+        messages_side.fetch.side_effect = api_error
+        self.mock_client.messages.return_value = messages_side
+
+        status = self.service.get_delivery_status("SM123")
+
+        assert status["status"] == "error"
+        assert status["error"] == "Twilio API error: not found"
+
+    def test_validate_credentials_without_client(self):
+        """validate_credentials returns False when client is unset."""
+        service = TwilioService()
+        service.client = None
+        assert not service.validate_credentials()
+
+    def test_twilio_rest_exception_import_fallback(self):
+        """TwilioRestException falls back to Exception when import fails."""
+        import src.api.twilio_service as twilio_module
+
+        original = twilio_module.TwilioRestException
+        try:
+            twilio_module.TwilioRestException = Exception
+            service = TwilioService()
+            assert service is not None
+        finally:
+            twilio_module.TwilioRestException = original

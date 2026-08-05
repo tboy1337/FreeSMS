@@ -5,7 +5,7 @@ Settings Tab - UI for configuring SMS services and application settings
 import json
 import threading
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -30,10 +30,22 @@ from src.security.validation import InputValidator
 class SettingsTab(QWidget):
     """Settings and configuration tab"""
 
+    status_message = Signal(str)
+    dialog_info = Signal(str, str)
+    dialog_error = Signal(str, str)
+
     def __init__(self, app):
         """Initialize the settings tab"""
         super().__init__()
         self.app = app
+
+        self.status_message.connect(self.app.set_status)
+        self.dialog_info.connect(
+            lambda title, message: QMessageBox.information(self, title, message)
+        )
+        self.dialog_error.connect(
+            lambda title, message: QMessageBox.critical(self, title, message)
+        )
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -372,21 +384,21 @@ class SettingsTab(QWidget):
         try:
             service = self.app.service_manager.get_service_by_name("twilio")
             if not service:
-                QMessageBox.critical(self, "Error", "Twilio service not available")
-                self.app.set_status("Ready")
+                self.dialog_error.emit("Error", "Twilio service not available")
+                self.status_message.emit("Ready")
                 return
 
             success = service.configure(credentials)
 
             if success:
-                QMessageBox.information(self, "Success", "Twilio connection successful")
+                self.dialog_info.emit("Success", "Twilio connection successful")
             else:
-                QMessageBox.critical(self, "Error", "Failed to connect to Twilio")
+                self.dialog_error.emit("Error", "Failed to connect to Twilio")
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error testing Twilio: {str(e)}")
+            self.dialog_error.emit("Error", f"Error testing Twilio: {str(e)}")
 
-        self.app.set_status("Ready")
+        self.status_message.emit("Ready")
 
     def _on_save_twilio(self):
         """Save Twilio credentials"""
@@ -445,26 +457,25 @@ class SettingsTab(QWidget):
         try:
             service = self.app.service_manager.get_service_by_name("textbelt")
             if not service:
-                QMessageBox.critical(self, "Error", "TextBelt service not available")
-                self.app.set_status("Ready")
+                self.dialog_error.emit("Error", "TextBelt service not available")
+                self.status_message.emit("Ready")
                 return
 
             success = service.configure(credentials)
 
             if success:
                 quota = service.get_remaining_quota()
-                QMessageBox.information(
-                    self,
+                self.dialog_info.emit(
                     "Success",
                     f"TextBelt connection successful\nRemaining quota: {quota}",
                 )
             else:
-                QMessageBox.critical(self, "Error", "Failed to connect to TextBelt")
+                self.dialog_error.emit("Error", "Failed to connect to TextBelt")
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error testing TextBelt: {str(e)}")
+            self.dialog_error.emit("Error", f"Error testing TextBelt: {str(e)}")
 
-        self.app.set_status("Ready")
+        self.status_message.emit("Ready")
 
     def _on_save_textbelt(self):
         """Save TextBelt credentials"""

@@ -4,7 +4,7 @@ requires = [ "setuptools>=68" ]
 
 [project]
 name = "freesms"
-version = "1.0.1"
+version = "1.0.2"
 description = "A comprehensive SMS management application with GUI, CLI, and API interfaces"
 readme = "README.md"
 keywords = [ "api", "cli", "gui", "messaging", "sms", "textbelt", "twilio" ]
@@ -42,16 +42,22 @@ dependencies = [
   "twilio",
 ]
 optional-dependencies.dev = [
+  "autopep8",
+  "bandit",
   "black",
   "isort",
   "mypy",
+  "pillow",
   "pip-audit",
   "pylint",
   "pyproject-fmt",
   "pytest",
+  "pytest-asyncio",
   "pytest-cov",
+  "pytest-mock",
   "pytest-qt",
   "pytest-timeout",
+  "pytest-xdist",
   "types-requests",
 ]
 urls."Bug Tracker" = "https://github.com/tboy1337/FreeSMS/issues"
@@ -108,6 +114,10 @@ indent = 2
 generate_python_version_classifiers = true
 max_supported_python = "3.14"
 table_format = "short"
+
+[tool.bandit]
+exclude_dirs = [ "tests" ]
+skips = [ "B404", "B603", "B607", "B608" ]
 
 [tool.pip-audit]
 progress-spinner = "off"
