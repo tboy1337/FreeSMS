@@ -4,7 +4,7 @@ requires = [ "setuptools>=68" ]
 
 [project]
 name = "freesms"
-version = "1.0.4"
+version = "1.0.5"
 description = "A comprehensive SMS management application with GUI, CLI, and API interfaces"
 readme = "README.md"
 keywords = [ "api", "cli", "gui", "messaging", "sms", "textbelt", "twilio" ]

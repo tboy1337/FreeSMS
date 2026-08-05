@@ -17,7 +17,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT_PATH = PROJECT_ROOT / "pyproject.toml"
-PYTHON_CHECK_PATHS = ("src", "tests", "scripts", "run.py")
+PYTHON_CHECK_PATHS = ("src", "tests", "scripts")
 
 logging.basicConfig(
     level=logging.INFO,
@@ -106,7 +106,6 @@ VERIFY_STEPS: tuple[VerifyStep, ...] = (
             "src",
             "tests",
             "scripts",
-            "run.py",
         ],
     ),
     VerifyStep("pip-audit", _build_pip_audit_command()),
@@ -116,7 +115,7 @@ VERIFY_STEPS: tuple[VerifyStep, ...] = (
     VerifyStep("pylint", [sys.executable, "-m", "pylint", "src"]),
     VerifyStep("mypy", [sys.executable, "-m", "mypy", "src"]),
     VerifyStep("pytest", [sys.executable, "-m", "pytest", "tests/"]),
-    VerifyStep("cli smoke", [sys.executable, "run.py", "cli", "--help"]),
+    VerifyStep("cli smoke", [sys.executable, "-m", "src.cli.cli", "--help"]),
 )
 
 

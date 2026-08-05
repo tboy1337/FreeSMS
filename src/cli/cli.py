@@ -785,7 +785,7 @@ class SMSCommandLineInterface:
 
                 print(f"Successfully created contacts template at {output_file}")
                 print("Edit this file with your contacts data and then import it with:")
-                print(f"  python run.py cli contacts import {output_file}")
+                print(f"  freesms-cli contacts import {output_file}")
                 return True
         except Exception as e:
             print(f"Error creating contacts template: {e}")

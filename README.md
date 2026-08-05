@@ -58,7 +58,7 @@
    (or `pip install -r requirements-dev.txt`)
 
    After editable install, these commands are available:
-   - `freesms` — launch GUI or CLI (same as `python run.py`)
+   - `freesms` — launch GUI or CLI with optional `--cli` flag
    - `freesms-cli` — CLI only
    - `freesms-gui` — GUI only
 
@@ -86,7 +86,7 @@
 
 5. **Run the application**
    ```bash
-   python run.py
+   freesms-gui
    ```
 
 ## Command Line Interface
@@ -97,67 +97,67 @@ FreeSMS provides a CLI for automation and integration with other tools:
 
 Get help with available commands:
 ```bash
-python run.py cli --help
+freesms-cli --help
 ```
 
 Send a message directly from the command line:
 ```bash
-python run.py cli send "+1234567890" "Hello from FreeSMS"
+freesms-cli send "+1234567890" "Hello from FreeSMS"
 ```
 
 ### CLI Commands
 
 - **Send Messages**
   ```bash
-  python run.py cli send RECIPIENT MESSAGE [--service SERVICE]
+  freesms-cli send RECIPIENT MESSAGE [--service SERVICE]
   ```
 
 - **Manage Contacts**
   ```bash
-  python run.py cli contacts list
-  python run.py cli contacts add NAME PHONE [--country COUNTRY] [--notes NOTES]
-  python run.py cli contacts delete ID
+  freesms-cli contacts list
+  freesms-cli contacts add NAME PHONE [--country COUNTRY] [--notes NOTES]
+  freesms-cli contacts delete ID
   ```
 
 - **View Message History**
   ```bash
-  python run.py cli history list [--limit LIMIT]
-  python run.py cli history export OUTPUT_FILE [--limit LIMIT]
+  freesms-cli history list [--limit LIMIT]
+  freesms-cli history export OUTPUT_FILE [--limit LIMIT]
   ```
 
 - **Schedule Messages**
   ```bash
-  python run.py cli schedule list [--all]
-  python run.py cli schedule add RECIPIENT MESSAGE TIME [--service SERVICE] [--recurring {daily,weekly,monthly}] [--interval INTERVAL]
-  python run.py cli schedule cancel ID
+  freesms-cli schedule list [--all]
+  freesms-cli schedule add RECIPIENT MESSAGE TIME [--service SERVICE] [--recurring {daily,weekly,monthly}] [--interval INTERVAL]
+  freesms-cli schedule cancel ID
   ```
 
 - **Manage Templates**
   ```bash
-  python run.py cli templates list
-  python run.py cli templates add NAME CONTENT
-  python run.py cli templates delete ID
+  freesms-cli templates list
+  freesms-cli templates add NAME CONTENT
+  freesms-cli templates delete ID
   ```
 
 - **Configure SMS Services**
   ```bash
-  python run.py cli services list
-  python run.py cli services configure NAME CREDENTIALS
-  python run.py cli services activate NAME
-  python run.py cli services test [--name SERVICE]
+  freesms-cli services list
+  freesms-cli services configure NAME CREDENTIALS
+  freesms-cli services activate NAME
+  freesms-cli services test [--name SERVICE]
   ```
 
 - **Export/Import Contacts**
   ```bash
-  python run.py cli contacts export FILENAME
-  python run.py cli contacts import FILENAME
+  freesms-cli contacts export FILENAME
+  freesms-cli contacts import FILENAME
   ```
 
 ## Command Line Options
 
 ```
-python run.py --help
-usage: run.py [-h] [--minimized] [--debug] [--config CONFIG] [--cli]
+freesms --help
+usage: freesms [-h] [--minimized] [--debug] [--config CONFIG] [--cli]
 
 FreeSMS - Free SMS Messaging Application
 
@@ -215,13 +215,12 @@ FreeSMS/
 ├── tests/            # Unit and integration tests
 ├── LICENSE.md        # Commercial Restricted License
 ├── README.md         # This file
-├── pyproject.toml    # Package metadata and tool configuration
+├── pyproject.toml    # Package metadata, console scripts, and tool configuration
 ├── requirements.txt  # Python dependencies
 ├── requirements-dev.txt
 ├── pytest.ini
 ├── mypy.ini
 ├── .coveragerc
-└── run.py            # Application entry point
 ```
 
 ## Testing
